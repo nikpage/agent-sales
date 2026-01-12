@@ -4,15 +4,6 @@ import { generateEmbedding } from '../../lib/embeddings';
 import { AgentContext } from '../agentContext';
 import { retry } from '../retryPolicy';
 
-const spamKeywords = ['unsubscribe', 'opt-out', 'marketing', 'promo', 'no-reply'];
-
-function isSpam(messageText: string, classification: any): boolean {
-  if (classification?.relevance === 'NOISE') return true;
-  const lowerText = (messageText || '').toLowerCase();
-  if (spamKeywords.some(kw => lowerText.includes(kw))) return true;
-  return false;
-}
-
 function cosineSimilarity(a: number[], b: number[]): number {
   if (!a || !b || a.length !== b.length) return 0;
   let dotProduct = 0;
@@ -34,10 +25,6 @@ export async function threadEmail(
   classification: any,
   emailData: any
 ): Promise<string | null> {
-  if (isSpam(messageText, classification)) {
-    return null;
-  }
-
   // Native thread match using Gmail threadId
   const { data: existingMsg } = await ctx.supabase
     .from('messages')

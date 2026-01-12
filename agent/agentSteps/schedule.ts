@@ -48,6 +48,15 @@ export async function scheduleAction(
   emailData: any,
   threadId: string | null
 ): Promise<void> {
+  // Guard: Only process if text contains action words AND type is EVENT/TODO
+  const actionWords = ['meet', 'call', 'viewing', 'schedule', 'book', 'schůzka', 'prohlídka'];
+  const emailText = (emailData.cleanedText || '').toLowerCase();
+  const hasActionWord = actionWords.some(word => emailText.includes(word));
+
+  if (!hasActionWord && classification.type !== 'EVENT' && classification.type !== 'TODO') {
+    return;
+  }
+
   if (classification.type !== 'EVENT') return;
 
   const duration = classification.event_details?.duration_minutes || 60;

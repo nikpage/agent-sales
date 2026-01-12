@@ -10,6 +10,37 @@ import { classifyEmail } from '../agentSteps/classify';
 import { threadEmail } from '../agentSteps/thread';
 import { scheduleAction } from '../agentSteps/schedule';
 
+function isAutomatedOrBulk(emailData: any): boolean {
+  const from = (emailData.from || '').toLowerCase();
+  const subject = (emailData.subject || '').toLowerCase();
+  const text = (emailData.cleanedText || '').toLowerCase();
+
+  // Hard filters for automated/bulk
+  const automatedPatterns = [
+    'noreply', 'no-reply', 'donotreply', 'do-not-reply',
+    'automated', 'notification', 'alert', 'newsletter',
+    'unsubscribe', 'opt-out', 'marketing', 'promo',
+    'campaign', 'bulk', 'mailer-daemon', 'postmaster'
+  ];
+
+  // Check sender
+  if (automatedPatterns.some(pattern => from.includes(pattern))) {
+    return true;
+  }
+
+  // Check subject
+  if (automatedPatterns.some(pattern => subject.includes(pattern))) {
+    return true;
+  }
+
+  // Check for unsubscribe links in body
+  if (text.includes('unsubscribe') || text.includes('opt-out') || text.includes('opt out')) {
+    return true;
+  }
+
+  return false;
+}
+
 export async function runIngestion(ctx: AgentContext): Promise<number> {
   let processedMessages = 0;
 
@@ -28,21 +59,13 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
     const emailData = await ingestEmail(ctx, msgStub);
     if (!emailData) continue;
 
-    const triage = await classifyEmail(emailData.cleanedText, ctx, null);
-
-    // NOISE: do not store, do not create CP, just mark read and skip
-    if (triage.relevance === 'NOISE') {
-      await retry(() =>
-        ctx.gmail.users.messages.modify({
-          userId: 'me',
-          id: msgStub.id,
-          requestBody: { removeLabelIds: ['UNREAD'] },
-        })
-      );
+    // Hard filter: Drop automated/bulk messages immediately
+    if (isAutomatedOrBulk(emailData)) {
       continue;
     }
 
-    // Real mail only
+    const triage = await classifyEmail(emailData.cleanedText, ctx, null);
+
     const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from);
     await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData);
 
@@ -62,7 +85,7 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
         .from('messages')
         .update({
           thread_id: threadId,
-          external_thread_id: emailData.threadId,
+          external_thread_id: emailData.threadId
         })
         .eq('id', emailData.id);
 
@@ -81,13 +104,11 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
 
     await scheduleAction(ctx, cpId, triage, emailData, threadId);
 
-    await retry(() =>
-      ctx.gmail.users.messages.modify({
-        userId: 'me',
-        id: msgStub.id,
-        requestBody: { removeLabelIds: ['UNREAD'] },
-      })
-    );
+    await retry(() => ctx.gmail.users.messages.modify({
+      userId: 'me',
+      id: msgStub.id,
+      requestBody: { removeLabelIds: ['UNREAD'] }
+    }));
   }
 
   return processedMessages;
