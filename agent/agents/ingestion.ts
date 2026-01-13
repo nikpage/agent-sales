@@ -1,4 +1,5 @@
 // agent/agents/ingestion.ts
+
 import type { AgentContext } from '../agentContext';
 import { storeMessage } from '../../lib/ingestion';
 import { resolveCp } from '../../lib/cp';
@@ -24,11 +25,16 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
     await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData);
     processedMessages++;
 
-    await ctx.gmail.users.messages.modify({
-      userId: 'me',
-      id: msgStub.id,
-      requestBody: { removeLabelIds: ['UNREAD'] }
-    });
+    try {
+      await ctx.gmail.users.messages.modify({
+        userId: 'me',
+        id: msgStub.id,
+        requestBody: { removeLabelIds: ['UNREAD'] }
+      });
+    } catch (error) {
+      console.error('Failed to modify message labels:', error);
+      // Continue processing next message
+    }
   }
 
   return processedMessages;

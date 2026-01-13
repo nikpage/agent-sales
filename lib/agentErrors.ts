@@ -1,3 +1,5 @@
+// lib/agentErrors.ts
+
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface AgentError {
@@ -14,8 +16,9 @@ export function generateErrorId(): string {
   return `${prefix}-${num}`;
 }
 
-export function createUserMessage(error: Error, agentType: string): string {
-  const msg = error.message.toLowerCase();
+export function createUserMessage(error: any, agentType: string): string {
+  const rawMsg = typeof error === 'string' ? error : (error?.message || 'Unknown error');
+  const msg = rawMsg.toLowerCase();
 
   if (msg.includes('token') || msg.includes('auth') || msg.includes('credential')) {
     return 'Email access expired.';
@@ -37,11 +40,11 @@ export async function saveAgentError(
   supabase: SupabaseClient,
   userId: string,
   agentType: string,
-  error: Error
+  error: any
 ): Promise<string> {
   const errorId = generateErrorId();
   const messageUser = createUserMessage(error, agentType);
-  const messageInternal = error.message;
+  const messageInternal = typeof error === 'string' ? error : (error?.message || 'Unknown error');
 
   await supabase.from('agent_errors').insert({
     error_id: errorId,
