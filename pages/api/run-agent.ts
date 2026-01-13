@@ -17,5 +17,5 @@ export default async function handler(
   }
 
   const result = await runAgentForClient(clientId)
-  res.status(200).json(result)
+  res.status(200).json(JSON.parse(JSON.stringify(result)))
 }

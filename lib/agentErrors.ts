@@ -41,7 +41,7 @@ export async function saveAgentError(
 ): Promise<string> {
   const errorId = generateErrorId();
   const messageUser = createUserMessage(error, agentType);
-  const messageInternal = `${error.message}\n${error.stack || ''}`;
+  const messageInternal = error.message;
 
   await supabase.from('agent_errors').insert({
     error_id: errorId,
