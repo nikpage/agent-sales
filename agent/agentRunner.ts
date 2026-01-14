@@ -1,3 +1,4 @@
+import { spamGate } from '../lib/spamGate'
 // Path: agent/agentRunner.ts
 
 import { renewIfExpiring } from '../lib/calendar-setup';

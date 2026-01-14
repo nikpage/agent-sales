@@ -1,3 +1,4 @@
+import { spamGate } from '../lib/spamGate'
 import { createClient } from '@supabase/supabase-js';
 import { runAgentForClient } from '../agent/agentRunner';
 

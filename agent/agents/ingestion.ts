@@ -1,10 +1,18 @@
+import { spamGate } from '../../lib/spamGate'
+import { spamGate } from '../../lib/spamGate'
 // Path: agent/agents/ingestion.ts
 import type { AgentContext } from '../agentContext';
+import { spamGate } from '../../lib/spamGate'
 import { storeMessage } from '../../lib/ingestion';
+import { spamGate } from '../../lib/spamGate'
 import { generateEmbedding, storeEmbedding } from '../../lib/embeddings';
+import { spamGate } from '../../lib/spamGate'
 import { threadEmail } from '../agentSteps/thread';
+import { spamGate } from '../../lib/spamGate'
 import { resolveCp } from '../../lib/cp';
+import { spamGate } from '../../lib/spamGate'
 import { ingestEmail } from '../agentSteps/ingest';
+import { spamGate } from '../../lib/spamGate'
 export async function runIngestion(ctx: AgentContext): Promise<number> {
   let processedMessages = 0;
   const resList = await ctx.gmail.users.messages.list({
