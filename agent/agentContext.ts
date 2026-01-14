@@ -28,21 +28,24 @@ export async function createAgentContext(clientId: string): Promise<AgentContext
     .single();
 
   if (clientError || !client) {
-    return null;
+    console.error('Client fetch error:', clientError);
+    throw new Error('CLIENT_NOT_FOUND');
   }
 
   if (!client.google_oauth_tokens) {
-    return null;
+    console.error('No google_oauth_tokens for client');
+    throw new Error('NO_OAUTH_TOKENS');
   }
 
-  // Parse tokens
+  // Initialize tokens correctly
   let tokens;
   try {
     tokens = typeof client.google_oauth_tokens === 'string'
       ? JSON.parse(client.google_oauth_tokens)
       : client.google_oauth_tokens;
   } catch (parseError) {
-    return null;
+    console.error('Token parse error:', parseError);
+    throw new Error('TOKEN_PARSE_FAILED');
   }
 
   // Check token expiry and refresh if needed

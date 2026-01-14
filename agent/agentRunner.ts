@@ -40,7 +40,7 @@ export async function runAgentForClient(clientId: string): Promise<{
         : typeof err === 'string'
         ? err
         : 'AGENT_FAILED';
-
+    console.error('Error running agent for client:', err);  // ← Change this line to show full error
     await saveAgentError(globalDb, clientId, 'agent_runner', msg);
     return { clientId, processedMessages: 0, errors: [msg] };
   }
