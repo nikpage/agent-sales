@@ -20,5 +20,6 @@ export default async function handler(
   }
 
   const result = await runAgentForClient(clientId)
-  res.status(200).json(JSON.parse(safeStringify(result)))
+  res.setHeader('Content-Type', 'application/json');
+  return res.status(200).send(safeStringify(result));
 }

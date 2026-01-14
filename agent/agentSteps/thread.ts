@@ -190,6 +190,8 @@ export async function threadEmail(
       await updateThreadSummary(ctx.supabase, bestThreadId, ctx.clientId, ctx.apiKey);
     }
 
+    await ctx.supabase.from('messages').update({ thread_id: bestThreadId }).eq('id', messageId);
+
     return bestThreadId;
   } else {
     // Create new thread
@@ -224,6 +226,8 @@ export async function threadEmail(
 
     // Generate initial summary for new thread
     await updateThreadSummary(ctx.supabase, newThread.id, ctx.clientId, ctx.apiKey);
+
+    await ctx.supabase.from('messages').update({ thread_id: newThread.id }).eq('id', messageId);
 
     return newThread.id;
   }

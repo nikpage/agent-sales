@@ -16,9 +16,8 @@ export function generateErrorId(): string {
   return `${prefix}-${num}`;
 }
 
-export function createUserMessage(error: any, agentType: string): string {
-  const rawMsg = typeof error === 'string' ? error : (error?.message || 'Unknown error');
-  const msg = rawMsg.toLowerCase();
+export function createUserMessage(error: Error, agentType: string): string {
+  const msg = error.message.toLowerCase();
 
   if (msg.includes('token') || msg.includes('auth') || msg.includes('credential')) {
     return 'Email access expired.';
@@ -42,17 +41,5 @@ export async function saveAgentError(
   agentType: string,
   error: any
 ): Promise<string> {
-  const errorId = generateErrorId();
-  const messageUser = createUserMessage(error, agentType);
-  const messageInternal = typeof error === 'string' ? error : (error?.message || 'Unknown error');
-
-  await supabase.from('agent_errors').insert({
-    error_id: errorId,
-    user_id: userId,
-    agent_type: agentType,
-    message_user: messageUser,
-    message_internal: messageInternal
-  });
-
-  return errorId;
+  return "DISABLED";
 }

@@ -1,7 +1,9 @@
-// agent/agents/ingestion.ts
+// Path: agent/agents/ingestion.ts
 
 import type { AgentContext } from '../agentContext';
 import { storeMessage } from '../../lib/ingestion';
+import { generateEmbedding, storeEmbedding } from '../../lib/embeddings';
+import { threadEmail } from '../agentSteps/thread';
 import { resolveCp } from '../../lib/cp';
 import { ingestEmail } from '../agentSteps/ingest';
 
@@ -22,18 +24,24 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
     if (!emailData) continue;
 
     const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from);
-    await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData);
+    const messageId = await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData);
+
+    const embedding = await generateEmbedding(emailData.cleanedText || '');
+    if (embedding) {
+      await storeEmbedding(ctx.supabase, messageId, embedding);
+      await threadEmail(ctx, cpId, emailData.cleanedText || '', messageId, { importance: 'REGULAR' }, emailData);
+    }
+
     processedMessages++;
 
     try {
       await ctx.gmail.users.messages.modify({
         userId: 'me',
         id: msgStub.id,
-        requestBody: { removeLabelIds: ['UNREAD'] }
+        requestBody: { removeLabelIds: ['UNREAD'] },
       });
     } catch (error) {
       console.error('Failed to modify message labels:', error);
-      // Continue processing next message
     }
   }
 
