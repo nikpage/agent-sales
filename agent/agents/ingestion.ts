@@ -4,6 +4,7 @@ import { spamGate } from '../../lib/spamGate'
 import type { AgentContext } from '../agentContext';
 import { spamGate } from '../../lib/spamGate'
 import { storeMessage } from '../../lib/ingestion';
+import { spamFilter } from "../../lib/spamFilter";
 import { spamGate } from '../../lib/spamGate'
 
 function isAutomatedEmail(emailData: any): boolean {
@@ -40,6 +41,8 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
   const messages = resList.data.messages ?? [];
   for (const msgStub of messages) {
     const emailData = await ingestEmail(ctx, msgStub);
+    const spamCheck = spamFilter({ headers: {}, fromEmail: emailData.from, subject: emailData.subject, text: emailData.cleanedText || "" });
+    if (spamCheck.isSpam) continue;
     if (isAutomatedEmail(emailData)) continue;
     if (!emailData) continue;
     const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from);
