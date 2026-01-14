@@ -31,7 +31,9 @@ export async function getEmailDetails(
   const from = getHeader('from');
   const to = getHeader('to');
   const subject = getHeader('subject');
-  const rfcMessageId = getHeader('message-id') || null;
+  const rfcMessageId = getHeader('message-id')
+  ? `GMAIL:${getHeader('message-id')}`
+  : null;
 
   // Extract body
   let rawText = '';
@@ -64,7 +66,7 @@ export async function storeMessage(
   userId: string,
   cpId: string,
   emailData: EmailData
-): Promise<string> {
+): Promise<string | null> {
   // Primary idempotency: RFC Message-ID
   if (emailData.rfcMessageId) {
     const { data: existing, error } = await supabase
@@ -99,6 +101,11 @@ export async function storeMessage(
     })
     .select('id')
     .single();
+
+  if (error && error.code === '23505') {
+    return null;
+  }
+
   if (error) throw error;
   return inserted.id as string;
 }
