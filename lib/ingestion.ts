@@ -1,3 +1,5 @@
+// lib/ingestion.ts
+
 import { gmail_v1 } from 'googleapis';
 
 interface EmailData {
@@ -24,7 +26,6 @@ export async function getEmailDetails(
 
   const msg = response.data;
   const headers = msg.payload?.headers || [];
-
   const getHeader = (name: string) =>
     headers.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
 
@@ -37,12 +38,20 @@ export async function getEmailDetails(
 
   // Extract body
   let rawText = '';
+  let htmlText = '';
   const parts = msg.payload?.parts || [msg.payload];
-
   for (const part of parts) {
     if (part?.mimeType === 'text/plain' && part.body?.data) {
       rawText += Buffer.from(part.body.data, 'base64').toString('utf-8');
     }
+    if (part?.mimeType === 'text/html' && part.body?.data) {
+      htmlText += Buffer.from(part.body.data, 'base64').toString('utf-8');
+    }
+  }
+
+  // Use plain text if available, otherwise strip HTML
+  if (!rawText && htmlText) {
+    rawText = htmlText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
   }
 
   const cleanedText = rawText.replace(/\r\n/g, '\n').trim();
@@ -74,6 +83,7 @@ export async function storeMessage(
       .select('id')
       .eq('universal_message_id', emailData.rfcMessageId)
       .maybeSingle();
+
     if (error) throw error;
     if (existing) return existing.id as string;
   } else {
@@ -83,9 +93,11 @@ export async function storeMessage(
       .select('id')
       .eq('external_id', emailData.id)
       .maybeSingle();
+
     if (error) throw error;
     if (existing) return existing.id as string;
   }
+
   const { data: inserted, error } = await supabase
     .from('messages')
     .insert({
@@ -105,7 +117,6 @@ export async function storeMessage(
   if (error && error.code === '23505') {
     return null;
   }
-
   if (error) throw error;
   return inserted.id as string;
 }

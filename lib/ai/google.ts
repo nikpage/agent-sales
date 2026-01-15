@@ -1,4 +1,4 @@
-// Path: lib/ai/google.ts
+// lib/ai/google.ts
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AI_MODELS } from './config';
@@ -12,7 +12,22 @@ export async function getEmbedding(text: string): Promise<number[]> {
   const model = genAI.getGenerativeModel({
     model: AI_MODELS.embeddings.model,
   });
-
   const result = await model.embedContent(text);
   return result.embedding.values;
+}
+
+export async function generateText(
+  prompt: string,
+  options?: { model?: string; temperature?: number }
+): Promise<string> {
+  const model = genAI.getGenerativeModel({
+    model: options?.model || AI_MODELS.classification,
+  });
+  const result = await model.generateContent({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: options?.temperature ?? 0.7,
+    },
+  });
+  return result.response.text();
 }

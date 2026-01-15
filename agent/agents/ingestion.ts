@@ -1,35 +1,31 @@
-import { spamGate } from '../../lib/spamGate'
-import { spamGate } from '../../lib/spamGate'
-// Path: agent/agents/ingestion.ts
-import type { AgentContext } from '../agentContext';
-import { spamGate } from '../../lib/spamGate'
-import { storeMessage } from '../../lib/ingestion';
-import { spamFilter } from "../../lib/spamFilter";
-import { spamGate } from '../../lib/spamGate'
+// agent/agents/ingestion.ts
 
-function isAutomatedEmail(emailData: any): boolean {
-  const from = (emailData.from || "").toLowerCase();
-  const subject = (emailData.subject || "").toLowerCase();
-  const text = (emailData.cleanedText || "").toLowerCase();
-  
-  if (from.includes("noreply") || from.includes("no-reply")) return true;
-  
-  const autoWords = ["automated", "do not reply", "unsubscribe", "auto-generated", "notification", "alert"];
-  const checkText = subject + " " + text;
-  for (const word of autoWords) {
-    if (checkText.includes(word)) return true;
-  }
-  
-  return false;
-}
+import type { AgentContext } from '../agentContext';
+import { storeMessage } from '../../lib/ingestion';
 import { generateEmbedding, storeEmbedding } from '../../lib/embeddings';
-import { spamGate } from '../../lib/spamGate'
 import { threadEmail } from '../agentSteps/thread';
-import { spamGate } from '../../lib/spamGate'
 import { resolveCp } from '../../lib/cp';
-import { spamGate } from '../../lib/spamGate'
 import { ingestEmail } from '../agentSteps/ingest';
-import { spamGate } from '../../lib/spamGate'
+import { whitelistPrompt } from '../../lib/ai/prompts/whitelist';
+import { AI_MODELS, AI_CONFIG } from '../../lib/ai/config';
+import { generateText } from '../../lib/ai/google';
+
+async function checkWhitelist(emailData: any): Promise<boolean> {
+  const bodySnippet = (emailData.cleanedText || '').slice(0, AI_CONFIG.whitelist.bodyCharLimit);
+  const prompt = whitelistPrompt(emailData.from, emailData.subject || '', bodySnippet);
+
+  try {
+    const response = await generateText(prompt, {
+      model: AI_MODELS.whitelist,
+      temperature: AI_CONFIG.whitelist.temperature,
+    });
+    return response.toUpperCase().includes('ALLOW');
+  } catch (error) {
+    console.error('Whitelist check failed:', error);
+    return true; // Default to allowing on error (false positive bias)
+  }
+}
+
 export async function runIngestion(ctx: AgentContext): Promise<number> {
   let processedMessages = 0;
   const resList = await ctx.gmail.users.messages.list({
@@ -41,10 +37,12 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
   const messages = resList.data.messages ?? [];
   for (const msgStub of messages) {
     const emailData = await ingestEmail(ctx, msgStub);
-    const spamCheck = spamFilter({ headers: {}, fromEmail: emailData.from, subject: emailData.subject, text: emailData.cleanedText || "" });
-    if (spamCheck.isSpam) continue;
-    if (isAutomatedEmail(emailData)) continue;
     if (!emailData) continue;
+
+    // AI whitelist check
+    const isAllowed = await checkWhitelist(emailData);
+    if (!isAllowed) continue;
+
     const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from);
     const messageId = await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData);
     if (!messageId) continue;
