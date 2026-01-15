@@ -1,4 +1,5 @@
-//agent/agentContext.ts
+// agent/agentContext.ts
+
 import { createClient } from '@supabase/supabase-js';
 import { google } from 'googleapis';
 import { setCredentials } from '../lib/google-auth';
@@ -10,9 +11,11 @@ export interface AgentContext {
   gmail: any;
   calendar: any;
   apiKey: string;
+  bulkMode: boolean;
 }
 
-export async function createAgentContext(clientId: string): Promise<AgentContext | null> {
+export async function createAgentContext(clientId: string, bulkMode: boolean = false): Promise<AgentContext | null> {
+  console.log(`DEBUG: createAgentContext called with bulkMode=${bulkMode}`);
   const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY!
@@ -73,6 +76,7 @@ export async function createAgentContext(clientId: string): Promise<AgentContext
     supabase,
     gmail,
     calendar,
-    apiKey
+    apiKey,
+    bulkMode
   };
 }

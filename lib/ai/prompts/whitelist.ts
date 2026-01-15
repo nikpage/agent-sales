@@ -25,3 +25,4 @@ Subject: ${subject}
 Body: ${bodySnippet}
 
 Reply ONLY with: ALLOW or REJECT`;
+}

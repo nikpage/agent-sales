@@ -10,13 +10,15 @@ import { whitelistPrompt } from '../../lib/ai/prompts/whitelist';
 import { AI_MODELS, AI_CONFIG } from '../../lib/ai/config';
 import { generateText } from '../../lib/ai/google';
 
-async function checkWhitelist(emailData: any): Promise<boolean> {
+async function checkWhitelist(ctx: AgentContext, emailData: any): Promise<boolean> {
   const bodySnippet = (emailData.cleanedText || '').slice(0, AI_CONFIG.whitelist.bodyCharLimit);
   const prompt = whitelistPrompt(emailData.from, emailData.subject || '', bodySnippet);
 
+  const model = ctx.bulkMode ? AI_MODELS.whitelistBulk : AI_MODELS.whitelist;
+
   try {
     const response = await generateText(prompt, {
-      model: AI_MODELS.whitelist,
+      model,
       temperature: AI_CONFIG.whitelist.temperature,
     });
     return response.toUpperCase().includes('ALLOW');
@@ -27,6 +29,9 @@ async function checkWhitelist(emailData: any): Promise<boolean> {
 }
 
 export async function runIngestion(ctx: AgentContext): Promise<number> {
+  const model = ctx.bulkMode ? AI_MODELS.whitelistBulk : AI_MODELS.whitelist;
+  console.log(`Ingestion mode: ${ctx.bulkMode ? 'BULK' : 'NORMAL'}, using model: ${model}`);
+
   let processedMessages = 0;
   const resList = await ctx.gmail.users.messages.list({
     userId: 'me',
@@ -40,7 +45,7 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
     if (!emailData) continue;
 
     // AI whitelist check
-    const isAllowed = await checkWhitelist(emailData);
+    const isAllowed = await checkWhitelist(ctx, emailData);
     if (!isAllowed) continue;
 
     const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from);
