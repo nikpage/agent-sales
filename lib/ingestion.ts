@@ -9,6 +9,7 @@ interface EmailData {
   to: string;
   subject: string;
   timestamp: string;
+  occurredAt: string | null;
   rawText: string;
   cleanedText: string;
   rfcMessageId: string | null;
@@ -36,7 +37,6 @@ export async function getEmailDetails(
   ? `GMAIL:${getHeader('message-id')}`
   : null;
 
-  // Extract body
   let rawText = '';
   let htmlText = '';
   const parts = msg.payload?.parts || [msg.payload];
@@ -49,13 +49,22 @@ export async function getEmailDetails(
     }
   }
 
-  // Use plain text if available, otherwise strip HTML
   if (!rawText && htmlText) {
     rawText = htmlText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
   }
 
   const cleanedText = rawText.replace(/\r\n/g, '\n').trim();
   const timestamp = new Date(parseInt(msg.internalDate || '0')).toISOString();
+
+  let occurredAt: string | null = null;
+  if (msg.internalDate) {
+    occurredAt = new Date(parseInt(msg.internalDate)).toISOString();
+  } else {
+    const dateHeader = getHeader('date');
+    if (dateHeader) {
+      occurredAt = new Date(dateHeader).toISOString();
+    }
+  }
 
   return {
     id: msg.id!,
@@ -64,6 +73,7 @@ export async function getEmailDetails(
     to,
     subject,
     timestamp,
+    occurredAt,
     rawText,
     cleanedText,
     rfcMessageId,
@@ -74,9 +84,14 @@ export async function storeMessage(
   supabase: any,
   userId: string,
   cpId: string,
-  emailData: EmailData
+  emailData: EmailData,
+  conversationId: string,
+  direction: 'inbound' | 'outbound' = 'inbound'
 ): Promise<string | null> {
-  // Primary idempotency: RFC Message-ID
+  if (!conversationId || conversationId.length === 0) {
+    throw new Error('conversationId is required');
+  }
+
   if (emailData.rfcMessageId) {
     const { data: existing, error } = await supabase
       .from('messages')
@@ -87,7 +102,6 @@ export async function storeMessage(
     if (error) throw error;
     if (existing) return existing.id as string;
   } else {
-    // Fallback idempotency: external_id
     const { data: existing, error } = await supabase
       .from('messages')
       .select('id')
@@ -103,10 +117,12 @@ export async function storeMessage(
     .insert({
       user_id: userId,
       cp_id: cpId,
-      direction: 'inbound',
+      direction: direction,
       raw_text: emailData.rawText,
       cleaned_text: emailData.cleanedText,
       timestamp: emailData.timestamp,
+      occurred_at: emailData.occurredAt,
+      conversation_id: conversationId,
       external_id: emailData.id,
       external_thread_id: emailData.threadId,
       universal_message_id: emailData.rfcMessageId,

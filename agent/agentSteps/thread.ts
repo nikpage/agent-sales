@@ -1,4 +1,4 @@
-// agent/agentSteps/thread.ts 
+// agent/agentSteps/thread.ts
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getEmbedding, updateConversationEmbedding } from '../../lib/embeddings';
@@ -21,17 +21,24 @@ async function updateThreadSummary(
   apiKey: string
 ): Promise<void> {
   try {
-    // Fetch last 10-15 messages for this thread
+    // Fetch messages for this thread
     const { data: messages } = await supabase
       .from('messages')
-      .select('cleaned_text, from, timestamp')
-      .eq('thread_id', threadId)
-      .order('timestamp', { ascending: false })
-      .limit(15);
+      .select('cleaned_text, timestamp, occurred_at')
+      .eq('conversation_id', threadId);
 
     if (!messages || messages.length === 0) {
       return;
     }
+
+    // Sort by occurred_at (fallback to timestamp), descending, then take last 15
+    const sortedMessages = messages
+      .sort((a: any, b: any) => {
+        const timeA = new Date(a.occurred_at ?? a.timestamp).getTime();
+        const timeB = new Date(b.occurred_at ?? b.timestamp).getTime();
+        return timeB - timeA;
+      })
+      .slice(0, 15);
 
     // Fetch thread participants
     const { data: participants } = await supabase
@@ -64,9 +71,9 @@ async function updateThreadSummary(
     }
 
     // Build context from messages
-    const messageContext = messages
+    const messageContext = sortedMessages
       .reverse()
-      .map((m: any) => `From: ${m.from}\n${m.cleaned_text}`)
+      .map((m: any) => m.cleaned_text)
       .join('\n\n');
 
     // Generate summary with Gemini
@@ -137,7 +144,8 @@ export async function threadEmail(
   messageText: string,
   messageId: string,
   classification: any,
-  emailData: any
+  emailData: any,
+  conversationId: string
 ): Promise<string | null> {
   // Get stored embedding for this message - FAIL HARD if missing
   const embedding = await getEmbedding(ctx.supabase, messageId);
@@ -152,83 +160,21 @@ export async function threadEmail(
     throw new Error(`Embedding not found for message ${messageId}`);
   }
 
-  // Vector similarity search against conversation_threads
-  const { data: similarThreads } = await ctx.supabase.rpc('match_conversations', {
-    query_embedding: embedding,
-    match_threshold: 0.75,
-    match_count: 5,
-    target_user_id: ctx.clientId
-  });
+  // Add participant
+  await ctx.supabase.from('thread_participants').upsert(
+    { thread_id: conversationId, cp_id: cpId, added_at: new Date().toISOString() },
+    { onConflict: 'thread_id, cp_id' }
+  );
 
-  let bestThreadId = null;
-  if (similarThreads && similarThreads.length > 0) {
-    // Filter for active threads only
-    const activeThread = similarThreads.find((t: any) => t.state === 'active');
-    if (activeThread) {
-      bestThreadId = activeThread.id;
-    }
-  }
+  // Update thread timestamp
+  await ctx.supabase.from('conversation_threads')
+    .update({ last_updated: new Date().toISOString() })
+    .eq('id', conversationId);
 
-  if (bestThreadId) {
-    // Add participant
-    await ctx.supabase.from('thread_participants').upsert(
-      { thread_id: bestThreadId, cp_id: cpId, added_at: new Date().toISOString() },
-      { onConflict: 'thread_id, cp_id' }
-    );
-    // Update thread timestamp
-    await ctx.supabase.from('conversation_threads')
-      .update({ last_updated: new Date().toISOString() })
-      .eq('id', bestThreadId);
+console.log('About to update embedding:', embedding.slice(0, 5));
+  // await updateConversationEmbedding(ctx.supabase, conversationId, embedding);
 
-    // CRITICAL: Only call updateConversationEmbedding for newly persisted messages
-    // Caller ensures this function is only invoked after message insert succeeds
-    // and never on retries of already-processed messages
-    await updateConversationEmbedding(ctx.supabase, bestThreadId, embedding);
+  await updateThreadSummary(ctx.supabase, conversationId, ctx.clientId, ctx.apiKey);
 
-    // Re-summarize if HIGH or CRITICAL
-    if (classification.importance === 'HIGH' || classification.importance === 'CRITICAL') {
-      await updateThreadSummary(ctx.supabase, bestThreadId, ctx.clientId, ctx.apiKey);
-    }
-
-    await ctx.supabase.from('messages').update({ thread_id: bestThreadId }).eq('id', messageId);
-
-    return bestThreadId;
-  } else {
-    // Create new thread
-    const { data: cp } = await ctx.supabase.from('cps').select('name').eq('id', cpId).single();
-    const topic = cp ? `Conversation with ${cp.name}` : `New Thread`;
-
-    const { data: newThread, error } = await ctx.supabase
-      .from('conversation_threads')
-      .insert({
-        user_id: ctx.clientId,
-        topic: topic,
-        state: 'active',
-        summary_text: messageText.substring(0, 100) + '...',
-        priority_score: 5,
-        last_updated: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        embedding: embedding,
-        message_count: 1
-      })
-      .select('id')
-      .single();
-
-    if (error) {
-      return null;
-    }
-
-    await ctx.supabase.from('thread_participants').insert({
-      thread_id: newThread.id,
-      cp_id: cpId,
-      added_at: new Date().toISOString()
-    });
-
-    // Generate initial summary for new thread
-    await updateThreadSummary(ctx.supabase, newThread.id, ctx.clientId, ctx.apiKey);
-
-    await ctx.supabase.from('messages').update({ thread_id: newThread.id }).eq('id', messageId);
-
-    return newThread.id;
-  }
+  return conversationId;
 }

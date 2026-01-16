@@ -69,13 +69,16 @@ export async function updateConversationEmbedding(
   if (tErr || !thread) throw new Error(`Thread ${threadId} not found`);
 
   const currentCount = thread.message_count || 0;
-  const currentEmbedding = thread.embedding as number[] | null;
+  const currentEmbedding = thread.embedding;
 
   let updated: number[];
   if (!currentEmbedding || currentCount === 0) {
     updated = vec;
   } else {
-    const cur = normalize(currentEmbedding as any[]);
+    const embeddingArray = typeof currentEmbedding === 'string'
+      ? JSON.parse(currentEmbedding)
+      : currentEmbedding;
+    const cur = normalize(embeddingArray);
     updated = new Array(DIM);
     for (let i = 0; i < DIM; i++) {
       updated[i] = (cur[i] * currentCount + vec[i]) / (currentCount + 1);
