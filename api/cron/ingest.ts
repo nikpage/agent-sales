@@ -31,8 +31,3 @@ export default async function handler(
 
   return res.status(200).json({ processed: users.length });
 }
-```
-
-Add to Vercel env vars:
-```
-CRON_SECRET=your_random_string_here
