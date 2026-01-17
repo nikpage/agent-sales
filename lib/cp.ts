@@ -10,19 +10,30 @@ function getSenderName(fromHeader: string): string {
   return name && name.length > 0 ? name : 'Unknown';
 }
 
-function extractPhone(text: string): string | null {
-  // Remove spaces, dashes, dots
-  const cleaned = text.replace(/[\s\-\.]/g, '');
+function extractPhone(emailBody: string): string | null {
+  // Get last ~10 lines (signature area)
+  const lines = emailBody.split('\n');
+  const signatureLines = lines.slice(-10).join('\n');
 
-  // Find all 9-digit sequences
+  // Remove all spaces, dashes, dots
+  const cleaned = signatureLines.replace(/[\s\-\.]/g, '');
+
+  // Try +420 format first
+  let match = cleaned.match(/\+420(\d{9})/);
+  if (match) return match[1];
+
+  // Try +42 format (German)
+  match = cleaned.match(/\+42(\d{9,})/);
+  if (match) return match[1].substring(0, 9);
+
+  // Try plain 9 digits
   const matches = cleaned.match(/\d{9}/g);
-
   if (!matches) return null;
 
-  // Return first valid phone (starts with 2-9)
-  for (const match of matches) {
-    if (match[0] >= '2' && match[0] <= '9') {
-      return match;
+  // Return first valid (starts with 2-9)
+  for (const m of matches) {
+    if (m[0] >= '2' && m[0] <= '9') {
+      return m;
     }
   }
 
@@ -31,7 +42,6 @@ function extractPhone(text: string): string | null {
 
 /**
  * Resolve (or create) a CP row for an inbound sender.
- * DB is authoritative: cps(user_id, primary_identifier, other_identifiers).
  */
 export async function resolveCp(
   supabase: any,
@@ -43,42 +53,88 @@ export async function resolveCp(
   const senderName = getSenderName(fromHeader);
   const phoneNumber = emailBody ? extractPhone(emailBody) : null;
 
-  // Check primary_identifier
+  // 1. Check if email exists as primary_identifier
   let { data: cp, error: findErr } = await supabase
     .from('cps')
-    .select('id')
+    .select('*')
     .eq('user_id', userId)
     .eq('primary_identifier', senderEmail)
     .maybeSingle();
 
   if (findErr) throw findErr;
-  if (cp?.id) return cp.id as string;
 
-  // Check other_identifiers->emails
+  if (cp?.id) {
+    // Found by email - update phone if we have one
+    if (phoneNumber) {
+      const phones = cp.other_identifiers?.phones || [];
+      if (!phones.includes(phoneNumber)) {
+        phones.push(phoneNumber);
+        await supabase
+          .from('cps')
+          .update({
+            other_identifiers: { ...cp.other_identifiers, phones }
+          })
+          .eq('id', cp.id);
+      }
+    }
+    return cp.id as string;
+  }
+
+  // 2. Check if email exists in other_identifiers->emails
   ({ data: cp, error: findErr } = await supabase
     .from('cps')
-    .select('id')
+    .select('*')
     .eq('user_id', userId)
     .contains('other_identifiers', { emails: [senderEmail] })
     .maybeSingle());
 
   if (findErr) throw findErr;
-  if (cp?.id) return cp.id as string;
 
-  // Check other_identifiers->phones (if phoneNumber provided)
+  if (cp?.id) {
+    // Found by email - update phone if we have one
+    if (phoneNumber) {
+      const phones = cp.other_identifiers?.phones || [];
+      if (!phones.includes(phoneNumber)) {
+        phones.push(phoneNumber);
+        await supabase
+          .from('cps')
+          .update({
+            other_identifiers: { ...cp.other_identifiers, phones }
+          })
+          .eq('id', cp.id);
+      }
+    }
+    return cp.id as string;
+  }
+
+  // 3. Check if phone exists (if we have one)
   if (phoneNumber) {
     ({ data: cp, error: findErr } = await supabase
       .from('cps')
-      .select('id')
+      .select('*')
       .eq('user_id', userId)
       .contains('other_identifiers', { phones: [phoneNumber] })
       .maybeSingle());
 
     if (findErr) throw findErr;
-    if (cp?.id) return cp.id as string;
+
+    if (cp?.id) {
+      // Found by phone - add this email
+      const emails = cp.other_identifiers?.emails || [];
+      if (!emails.includes(senderEmail)) {
+        emails.push(senderEmail);
+        await supabase
+          .from('cps')
+          .update({
+            other_identifiers: { ...cp.other_identifiers, emails }
+          })
+          .eq('id', cp.id);
+      }
+      return cp.id as string;
+    }
   }
 
-  // Create new CP
+  // 4. Create new CP
   const otherIdentifiers: any = { emails: [] };
   if (phoneNumber) {
     otherIdentifiers.phones = [phoneNumber];
