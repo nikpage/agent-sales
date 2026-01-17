@@ -31,12 +31,14 @@ export default async function handler(req, res) {
   const auth = setCredentials(merged)
   const gmail = google.gmail({ version: 'v1', auth })
 
-  await gmail.users.watch({
+  const watchResponse = await gmail.users.watch({
     userId: 'me',
     requestBody: {
       topicName: process.env.GMAIL_PUBSUB_TOPIC
     }
   })
+
+  console.log('WATCH RESPONSE:', JSON.stringify(watchResponse.data))
 
   return res.redirect('/')
 }
