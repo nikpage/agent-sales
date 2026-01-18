@@ -1,17 +1,27 @@
 # Executive Assistant – Roadmap to Legendary
 
+Roles:
+
+Me = consultant who sets up agents for clients
+User = my client. In this case a real estate sales person.
+CP = user's counter-party . Usually either property buyer or seller (landlord or renter), may simetimes be lawyer, finance, photographer, or other role assisting one or more deals
+
+Key Notes:
+Conversations in db are Deal based. They may have multiple cp's, some temporarily (lawyer for instance) and they may go through multiple properties (several properties are considered before they focus on one, they move toward close)
+
+
 ## Phase 1 — Conversation Identification (Foundation)
-[ ] Introduce a product-level Conversation ID (not tied to Gmail thread)
-[ ] Treat Gmail threadId as a hint, not authority
+[ x] Introduce a product-level Conversation ID (not tied to Gmail thread)
+[x ] Treat Gmail threadId as a hint, not authority
 [ ] Generate embedding for every incoming email
-[ ] Add vector search over existing conversations
-  [ ] Retrieve top-k candidate conversations
-  [ ] Attach email if similarity > threshold
-  [ ] Create new conversation otherwise
-[ ] Store conversation embeddings in DB
-  [ ] Rolling “current topic” embedding
-  [ ] Optional stable “historical” embedding
-[ ] Avoid re-embedding full summaries on every message
+[x ] Add vector search over existing conversations
+  [x ] Retrieve top-k candidate conversations
+  [ x] Attach email if similarity > threshold
+  [ x] Create new conversation otherwise
+[x ] Store conversation embeddings in DB
+  [x ] Rolling “current topic” embedding
+  [ x] Optional stable “historical” embedding
+[ x] Avoid re-embedding full summaries on every message
 [ ] Cross-email identity handling
   [ ] Map multiple email addresses to one CP
   [ ] Detect assistants / forwards / aliases
@@ -75,5 +85,9 @@
 
 ---
 
-**Start point for tomorrow:**  
-☑ Phase 1 → Stored conversation embeddings + vector-based conversation matching
+**Things to do 5+**  
+☑ Match CPs - CP1 & 15 mention same phone number, are they the same person?
+[ ] Cross-email identity handling
+  [ ] Map multiple email addresses to one CP
+  [ ] Detect assistants / forwards / aliases
+  [ ] Heuristic matching (domain, signature, names)

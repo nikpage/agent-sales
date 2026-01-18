@@ -7,7 +7,7 @@ export async function findOrCreateConversation(
   messageEmbedding: number[]
 ): Promise<string> {
   const { data: similarConversations } = await supabase.rpc('match_conversations', {
-    query_embedding: messageEmbedding,
+    query_embedding: JSON.stringify(messageEmbedding),
     match_threshold: 0.78,
     match_count: 5,
     target_user_id: userId

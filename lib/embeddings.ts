@@ -50,7 +50,32 @@ export async function getEmbedding(
     .single();
 
   if (error) return null;
-  return data?.embedding || null;
+
+  let embedding = data?.embedding;
+  if (!embedding) return null;
+
+  // If string, parse to array
+  if (typeof embedding === 'string' && embedding.startsWith('[')) {
+    try {
+      embedding = JSON.parse(embedding);
+    } catch {
+      return null;
+    }
+  }
+
+  // Validate 768-dimension array
+  if (!Array.isArray(embedding) || embedding.length !== 768) {
+    return null;
+  }
+
+  // Validate all elements are numbers
+  for (let i = 0; i < 768; i++) {
+    if (typeof embedding[i] !== 'number' || !Number.isFinite(embedding[i])) {
+      return null;
+    }
+  }
+
+  return embedding;
 }
 
 export async function updateConversationEmbedding(
