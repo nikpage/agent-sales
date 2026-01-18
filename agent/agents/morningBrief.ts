@@ -1,153 +1,134 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { google } from 'googleapis';
-import { signParams } from '../../lib/security';
+import { NextApiRequest, NextApiResponse } from 'next';
+import { createClient } from '@supabase/supabase-js';
+import { verifySignature } from '../../lib/security';
 
-function makeActionUrl(action: string, id: string, extra?: any): string {
-  const params: any = { action, id, ts: Date.now().toString(), ...extra };
-  params.sig = signParams(params);
-  const query = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
-  return `${process.env.NEXTAUTH_URL}/api/cmd?${query}`;
-}
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!);
 
-async function getDailyData(supabase: SupabaseClient, userId: string) {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!verifySignature(req.query)) {
+    return res.status(401).send('<h1>⛔ Neplatný odkaz</h1>');
+  }
 
-  const { data: todos } = await supabase
-    .from('todos')
-    .select('id, description, due_date, status, cps(name)')
-    .eq('user_id', userId)
-    .in('status', ['pending', 'in_progress'])
-    .lte('due_date', todayEnd.toISOString().split('T')[0]);
+  const { action, id } = req.query;
 
-  const { data: events } = await supabase
-    .from('events')
-    .select('id, title, start_time, end_time, location, status, cps(name)')
-    .eq('user_id', userId)
-    .gte('start_time', todayStart.toISOString())
-    .lte('start_time', todayEnd.toISOString());
+  try {
+    if (action === 'complete_todo') {
+      await supabase.from('todos').update({ status: 'completed' }).eq('id', id);
+      return res.send('<h1>✅ Úkol dokončen</h1>');
+    }
 
-  const { data: headlines } = await supabase
-    .from('conversation_threads')
-    .select('topic, summary_text, priority_score, cps(name)')
-    .eq('user_id', userId)
-    .eq('state', 'active')
-    .gte('priority_score', 8)
-    .order('priority_score', { ascending: false })
-    .limit(3);
+    if (action === 'snooze_todo') {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      await supabase.from('todos').update({ due_date: tomorrow.toISOString().split('T')[0] }).eq('id', id);
+      return res.send('<h1>📅 Úkol přesunut na zítra</h1>');
+    }
 
-  const { data: threads } = await supabase
-    .from('conversation_threads')
-    .select('id, topic, summary_text, last_updated, cps(name)')
-    .eq('user_id', userId)
-    .eq('state', 'active')
-    .order('last_updated', { ascending: false });
+    if (action === 'accept_event') {
+      await supabase.from('events').update({ status: 'confirmed' }).eq('id', id);
+      return res.send('<h1>✅ Událost potvrzena</h1>');
+    }
 
-  return { todos, events, headlines, threads };
-}
+    if (action === 'reject_event') {
+      await supabase.from('events').update({ status: 'rejected' }).eq('id', id);
+      return res.send('<h1>❌ Událost zrušena</h1>');
+    }
 
-function formatHeadlines(headlines: any[] | null): string {
-  if (!headlines || headlines.length === 0) return '<p><em>Žádné urgentní záležitosti (No Urgent Items).</em></p>';
-  return '<ul style="background-color: #ffebeb; padding: 15px; border-radius: 5px; border: 1px solid #ffcccc;">' + headlines.map(h => {
-    return `<li style="margin-bottom: 5px; font-size: 1.1em;"><strong>🔥 ${h.cps?.name || 'Unknown'}:</strong> ${h.summary_text}</li>`;
-  }).join('') + '</ul>';
-}
+    if (action === 'reschedule_event') {
+      return res.send('<h1>⏰ Navrhněte nový čas</h1><p>Tato funkce bude brzy dostupná.</p>');
+    }
 
-function formatTodos(todos: any[] | null): string {
-  if (!todos || todos.length === 0) return '<p>Žádné úkoly.</p>';
-  return '<ul>' + todos.map(t => {
-    const desc = t.description.replace(/^ÚKOL:\s*/i, '').replace(/^TODO:\s*/i, '');
-    const completeUrl = makeActionUrl('complete_todo', t.id);
-    return `<li>
-      <strong>${t.cps?.name || 'Obecné'}:</strong> ${desc}
-      <br>[<a href="${completeUrl}">Hotovo</a>]
-    </li>`;
-  }).join('') + '</ul>';
-}
+    if (action === 'approve_suggestion') {
+      try {
+        const { data: todo } = await supabase.from('todos').select('user_id').eq('id', id).single();
 
-function formatEvents(events: any[] | null): string {
-  if (!events || events.length === 0) return '<p>Žádné události.</p>';
-  return '<ul>' + events.map(e => {
-    const time = new Date(e.start_time).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-    return `<li><strong>${time}</strong> - ${e.title} (${e.location || 'TBD'})</li>`;
-  }).join('') + '</ul>';
-}
+        if (!todo) {
+          await supabase.from('agent_errors').insert({
+            user_id: null,
+            agent_type: 'cmd_action',
+            message_user: 'Todo not found',
+            message_internal: `Action: approve_suggestion\nId: ${id}\nError: Todo not found`
+          });
+          return res.status(404).send('<h1>⚠️ Úkol nenalezen</h1>');
+        }
 
-function formatThreads(threads: any[] | null): string {
-  if (!threads || threads.length === 0) return '<p>Žádná aktivita.</p>';
-  return '<ul>' + threads.map(t => {
-    return `<li style="margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
-      <div style="font-weight: bold; color: #333;">${t.cps?.name || 'Neznámý'}</div>
-      <div style="color: #000;">${t.summary_text || 'Bez shrnutí'}</div>
-    </li>`;
-  }).join('') + '</ul>';
-}
+        await supabase.from('todos').update({ status: 'approved' }).eq('id', id);
+        return res.send('<h1>✅ Návrh schválen</h1>');
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const { data: todo } = await supabase.from('todos').select('user_id').eq('id', id).single();
+        await supabase.from('agent_errors').insert({
+          user_id: todo?.user_id || null,
+          agent_type: 'cmd_action',
+          message_user: 'Failed to approve suggestion',
+          message_internal: `Action: approve_suggestion\nId: ${id}\nError: ${errorMsg}`
+        });
+        return res.status(500).send('<h1>❌ Chyba při schvalování</h1>');
+      }
+    }
 
-async function sendEmailToSelf(gmail: any, email: string, subject: string, bodyHtml: string) {
-  const utf8Subject = Buffer.from(subject).toString('base64');
-  const messageParts = [
-    `From: <${email}>`,
-    `To: <${email}>`,
-    `Subject: =?utf-8?B?${utf8Subject}?=`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/html; charset=utf-8',
-    '',
-    bodyHtml
-  ].join('\n');
+    if (action === 'reject_suggestion') {
+      try {
+        const { data: todo } = await supabase.from('todos').select('user_id').eq('id', id).single();
 
-  const encodedMessage = Buffer.from(messageParts)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+        if (!todo) {
+          await supabase.from('agent_errors').insert({
+            user_id: null,
+            agent_type: 'cmd_action',
+            message_user: 'Todo not found',
+            message_internal: `Action: reject_suggestion\nId: ${id}\nError: Todo not found`
+          });
+          return res.status(404).send('<h1>⚠️ Úkol nenalezen</h1>');
+        }
 
-  await gmail.users.messages.send({
-    userId: 'me',
-    requestBody: { raw: encodedMessage }
-  });
-}
+        await supabase.from('todos').update({ status: 'rejected' }).eq('id', id);
+        return res.send('<h1>❌ Návrh zamítnut</h1>');
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const { data: todo } = await supabase.from('todos').select('user_id').eq('id', id).single();
+        await supabase.from('agent_errors').insert({
+          user_id: todo?.user_id || null,
+          agent_type: 'cmd_action',
+          message_user: 'Failed to reject suggestion',
+          message_internal: `Action: reject_suggestion\nId: ${id}\nError: ${errorMsg}`
+        });
+        return res.status(500).send('<h1>❌ Chyba při zamítání</h1>');
+      }
+    }
 
-export async function runMorningBrief(
-  supabase: SupabaseClient,
-  userId: string,
-  email: string,
-  tokens: any
-): Promise<void> {
-  const data = await getDailyData(supabase, userId);
+    if (action === 'snooze_suggestion') {
+      try {
+        const { data: todo } = await supabase.from('todos').select('user_id').eq('id', id).single();
 
-  const todayStr = new Date().toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long' });
+        if (!todo) {
+          await supabase.from('agent_errors').insert({
+            user_id: null,
+            agent_type: 'cmd_action',
+            message_user: 'Todo not found',
+            message_internal: `Action: snooze_suggestion\nId: ${id}\nError: Todo not found`
+          });
+          return res.status(404).send('<h1>⚠️ Úkol nenalezen</h1>');
+        }
 
-  const bodyHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h1 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">☀️ Ranní Přehled: ${todayStr}</h1>
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        await supabase.from('todos').update({ due_date: tomorrow.toISOString().split('T')[0] }).eq('id', id);
+        return res.send('<h1>📅 Návrh odložen na zítra</h1>');
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const { data: todo } = await supabase.from('todos').select('user_id').eq('id', id).single();
+        await supabase.from('agent_errors').insert({
+          user_id: todo?.user_id || null,
+          agent_type: 'cmd_action',
+          message_user: 'Failed to snooze suggestion',
+          message_internal: `Action: snooze_suggestion\nId: ${id}\nError: ${errorMsg}`
+        });
+        return res.status(500).send('<h1>❌ Chyba při odkládání</h1>');
+      }
+    }
 
-      <h2 style="color: #e74c3c; margin-top: 30px;">🚨 Hlavní zprávy (Headlines)</h2>
-      ${formatHeadlines(data.headlines)}
-
-      <h2 style="color: #2980b9; margin-top: 30px;">📅 Dnešní Kalendář</h2>
-      ${formatEvents(data.events)}
-
-      <h2 style="color: #27ae60; margin-top: 30px;">✅ Úkoly (To-Do)</h2>
-      ${formatTodos(data.todos)}
-
-      <h2 style="color: #8e44ad; margin-top: 30px;">💬 Přehled Aktivit</h2>
-      ${formatThreads(data.threads)}
-
-      <div style="margin-top: 50px; font-size: 0.8em; color: #999; text-align: center;">
-        Vygenerováno AI Asistentem
-      </div>
-    </div>
-  `;
-
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
-  );
-  oauth2Client.setCredentials(tokens);
-  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-  await sendEmailToSelf(gmail, email, 'Denní Přehled - ' + todayStr, bodyHtml);
+    res.send('<h1>❓ Neznámá akce</h1>');
+  } catch (err: any) {
+    res.status(500).send('<h1>❌ Chyba: ' + err.message + '</h1>');
+  }
 }

@@ -2,56 +2,42 @@
 
 import type { AgentContext } from '../agentContext';
 import { storeMessage } from '../../lib/ingestion';
-import { resolveCp } from '../../lib/cp';
-import { updateThreadSummary } from '../../lib/threading';
-import { retry } from '../retryPolicy';
-import { ingestEmail } from '../agentSteps/ingest';
-import { classifyEmail } from '../agentSteps/classify';
+import { generateEmbedding, storeEmbedding } from '../../lib/embeddings';
 import { threadEmail } from '../agentSteps/thread';
-import { scheduleAction } from '../agentSteps/schedule';
+import { resolveCp } from '../../lib/cp';
+import { ingestEmail } from '../agentSteps/ingest';
+import { whitelistPrompt } from '../../lib/ai/prompts/whitelist';
+import { AI_MODELS, AI_CONFIG } from '../../lib/ai/config';
+import { generateText } from '../../lib/ai/google';
+import { findOrCreateConversation } from '../../lib/conversation';
 
-function isAutomatedOrBulk(emailData: any): boolean {
-  const from = (emailData.from || '').toLowerCase();
-  const subject = (emailData.subject || '').toLowerCase();
-  const text = (emailData.cleanedText || '').toLowerCase();
-
-  // Hard filters for automated/bulk
-  const automatedPatterns = [
-    'noreply', 'no-reply', 'donotreply', 'do-not-reply',
-    'automated', 'notification', 'alert', 'newsletter',
-    'unsubscribe', 'opt-out', 'marketing', 'promo',
-    'campaign', 'bulk', 'mailer-daemon', 'postmaster'
-  ];
-
-  // Check sender
-  if (automatedPatterns.some(pattern => from.includes(pattern))) {
-    return true;
+async function checkWhitelist(ctx: AgentContext, emailData: any): Promise<boolean> {
+  const bodySnippet = (emailData.cleanedText || '').slice(0, AI_CONFIG.whitelist.bodyCharLimit);
+  const prompt = whitelistPrompt(emailData.from, emailData.subject || '', bodySnippet);
+  const model = ctx.bulkMode ? AI_MODELS.whitelistBulk : AI_MODELS.whitelist;
+  try {
+    const response = await generateText(prompt, {
+      model,
+      temperature: AI_CONFIG.whitelist.temperature,
+    });
+    return response.toUpperCase().includes('ALLOW');
+  } catch (error) {
+    console.error('Whitelist check failed:', error);
+    return true; // Default to allowing on error (false positive bias)
   }
-
-  // Check subject
-  if (automatedPatterns.some(pattern => subject.includes(pattern))) {
-    return true;
-  }
-
-  // Check for unsubscribe links in body
-  if (text.includes('unsubscribe') || text.includes('opt-out') || text.includes('opt out')) {
-    return true;
-  }
-
-  return false;
 }
 
 export async function runIngestion(ctx: AgentContext): Promise<number> {
+  const model = ctx.bulkMode ? AI_MODELS.whitelistBulk : AI_MODELS.whitelist;
+  console.log(`Ingestion mode: ${ctx.bulkMode ? 'BULK' : 'NORMAL'}, using model: ${model}`);
   let processedMessages = 0;
 
-  const resList = await retry<any>(() =>
-    ctx.gmail.users.messages.list({
-      userId: 'me',
-      labelIds: ['INBOX'],
-      q: 'in:inbox',
-      maxResults: 50,
-    })
-  );
+  const resList = await ctx.gmail.users.messages.list({
+    userId: 'me',
+    labelIds: ['INBOX'],
+    q: 'in:inbox is:unread',
+    maxResults: 50,
+  });
 
   const messages = resList.data.messages ?? [];
 
@@ -59,56 +45,73 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
     const emailData = await ingestEmail(ctx, msgStub);
     if (!emailData) continue;
 
-    // Hard filter: Drop automated/bulk messages immediately
-    if (isAutomatedOrBulk(emailData)) {
+    // AI whitelist check
+    const isAllowed = await checkWhitelist(ctx, emailData);
+    if (!isAllowed) continue;
+
+    const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from, emailData.cleanedText);
+
+    // Check if CP is blacklisted
+    const { data: cpData, error: cpError } = await ctx.supabase
+      .from('cps')
+      .select('is_blacklisted')
+      .eq('id', cpId)
+      .single();
+
+    if (cpError) {
+      console.error('Failed to check blacklist status:', cpError);
       continue;
     }
 
-    const triage = await classifyEmail(emailData.cleanedText, ctx, null);
+    if (cpData?.is_blacklisted) {
+      // Mark as read and skip
+      try {
+        await ctx.gmail.users.messages.modify({
+          userId: 'me',
+          id: msgStub.id,
+          requestBody: { removeLabelIds: ['UNREAD'] },
+        });
+      } catch (error) {
+        console.error('Failed to modify message labels:', error);
+      }
+      continue;
+    }
 
-    const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from);
-    await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData);
+    // Generate embedding BEFORE finding/creating conversation
+    let embedding;
+    try {
+      embedding = await generateEmbedding(emailData.cleanedText || '');
+    } catch (error) {
+      console.error('Failed to generate embedding, skipping message:', error);
+      continue;
+    }
+
+    if (!embedding) {
+      console.error('Embedding is null, skipping message');
+      continue;
+    }
+
+    const conversationId = await findOrCreateConversation(ctx.supabase, ctx.client.id, cpId, embedding);
+
+    const messageId = await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData, conversationId);
+    if (!messageId) continue;
+
+    // Store embedding (already generated)
+    await storeEmbedding(ctx.supabase, messageId, embedding);
+
+    await threadEmail(ctx, cpId, emailData.cleanedText || '', messageId, { importance: 'REGULAR' }, emailData, conversationId);
 
     processedMessages++;
 
-    const threadId = await threadEmail(
-      ctx,
-      cpId,
-      emailData.cleanedText,
-      emailData.id,
-      triage,
-      emailData
-    );
-
-    if (threadId) {
-      await ctx.supabase
-        .from('messages')
-        .update({
-          thread_id: threadId,
-          external_thread_id: emailData.threadId
-        })
-        .eq('id', emailData.id);
-
-      let score = 1;
-      if (triage.importance === 'CRITICAL') score = 10;
-      else if (triage.importance === 'HIGH') score = 8;
-      else if (triage.importance === 'REGULAR') score = 5;
-
-      await ctx.supabase
-        .from('conversation_threads')
-        .update({ priority_score: score, last_updated: new Date().toISOString() })
-        .eq('id', threadId);
-
-      await updateThreadSummary(ctx.supabase, threadId);
+    try {
+      await ctx.gmail.users.messages.modify({
+        userId: 'me',
+        id: msgStub.id,
+        requestBody: { removeLabelIds: ['UNREAD'] },
+      });
+    } catch (error) {
+      console.error('Failed to modify message labels:', error);
     }
-
-    await scheduleAction(ctx, cpId, triage, emailData, threadId);
-
-    await retry(() => ctx.gmail.users.messages.modify({
-      userId: 'me',
-      id: msgStub.id,
-      requestBody: { removeLabelIds: ['UNREAD'] }
-    }));
   }
 
   return processedMessages;

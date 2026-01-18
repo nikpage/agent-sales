@@ -1,4 +1,5 @@
-export async function retry<T>(
+export async function retry<T>(fn:()=>Promise<T>){return fn();}
+export async function retry_DISABLED<T>(
   fn: () => Promise<T>,
   options?: { retries?: number; baseDelayMs?: number }
 ): Promise<T> {
@@ -29,7 +30,7 @@ export async function retry<T>(
 
       // Exponential backoff
       const delayMs = baseDelayMs * Math.pow(2, attempt);
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+      
     }
   }
 

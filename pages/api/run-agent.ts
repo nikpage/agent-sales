@@ -1,5 +1,8 @@
+// pages/api/run-agent.ts
+
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { runAgentForClient } from '../../agent/agentRunner'
+import { safeStringify } from '../../lib/utils'
 
 export default async function handler(
   req: NextApiRequest,
@@ -17,5 +20,6 @@ export default async function handler(
   }
 
   const result = await runAgentForClient(clientId)
-  res.status(200).json(result)
+  res.setHeader('Content-Type', 'application/json');
+  return res.status(200).send(safeStringify(result));
 }

@@ -1,15 +1,19 @@
+// cli/agent.ts
+
 import { createClient } from '@supabase/supabase-js';
 import { runAgentForClient } from '../agent/agentRunner';
+import { runOutboundIngestion } from '../agent/agents/outboundIngestion';
+import { createAgentContext } from '../agent/agentContext';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY!
 );
 
-async function runCommand(clientId?: string) {
+async function runCommand(clientId?: string, bulkMode: boolean = false) {
+  console.log(`DEBUG: runCommand called with bulkMode=${bulkMode}`);
   if (clientId) {
-    // Run for single client
-    const result = await runAgentForClient(clientId);
+    const result = await runAgentForClient(clientId, bulkMode);
     if (result.errors.length > 0) {
       console.log(`✗ Client ${clientId}: ${result.processedMessages} messages processed, ${result.errors.length} errors`);
       result.errors.forEach(err => console.log(`  - ${err}`));
@@ -17,7 +21,6 @@ async function runCommand(clientId?: string) {
       console.log(`✓ Client ${clientId}: ${result.processedMessages} messages processed`);
     }
   } else {
-    // Run for all clients
     const { data: clients } = await supabase
       .from('users')
       .select('id, settings')
@@ -28,7 +31,6 @@ async function runCommand(clientId?: string) {
       return;
     }
 
-    // Filter out paused clients
     const activeClients = clients.filter(c => !c.settings?.agent_paused);
 
     if (activeClients.length === 0) {
@@ -38,7 +40,7 @@ async function runCommand(clientId?: string) {
 
     console.log(`Running agent for ${activeClients.length} clients...`);
     for (const client of activeClients) {
-      const result = await runAgentForClient(client.id);
+      const result = await runAgentForClient(client.id, bulkMode);
       if (result.errors.length > 0) {
         console.log(`✗ Client ${client.id}: ${result.processedMessages} messages processed, ${result.errors.length} errors`);
       } else {
@@ -46,6 +48,13 @@ async function runCommand(clientId?: string) {
       }
     }
   }
+}
+
+async function runOutboundCommand(clientId: string, bulkMode: boolean = false) {
+  console.log(`DEBUG: runOutboundCommand called with bulkMode=${bulkMode}`);
+  const ctx = await createAgentContext(clientId, bulkMode);
+  const count = await runOutboundIngestion(ctx);
+  console.log(`✓ Client ${clientId}: ${count} outbound messages processed`);
 }
 
 async function pauseCommand(clientId: string) {
@@ -95,8 +104,9 @@ async function main() {
 
   if (args.length === 0) {
     console.log('Usage:');
-    console.log('  agent run --client <id>');
-    console.log('  agent run --all');
+    console.log('  agent run --client <id> [--bulk]');
+    console.log('  agent run --all [--bulk]');
+    console.log('  agent run-outbound --client <id> [--bulk]');
     console.log('  agent pause --client <id>');
     console.log('  agent health --client <id>');
     process.exit(1);
@@ -106,12 +116,35 @@ async function main() {
 
   try {
     if (command === 'run') {
-      if (args[1] === '--client' && args[2]) {
-        await runCommand(args[2]);
+      const bulkMode = args.includes('--bulk');
+      if (args.includes('--client')) {
+        const clientIndex = args.indexOf('--client');
+        const clientId = args[clientIndex + 1];
+        if (clientId) {
+          await runCommand(clientId, bulkMode);
+        } else {
+          console.log('Invalid run command. Use: agent run --client <id> [--bulk]');
+          process.exit(1);
+        }
       } else if (args[1] === '--all') {
-        await runCommand();
+        await runCommand(undefined, bulkMode);
       } else {
-        console.log('Invalid run command. Use: agent run --client <id> or agent run --all');
+        console.log('Invalid run command. Use: agent run --client <id> [--bulk] or agent run --all [--bulk]');
+        process.exit(1);
+      }
+    } else if (command === 'run-outbound') {
+      const bulkMode = args.includes('--bulk');
+      if (args.includes('--client')) {
+        const clientIndex = args.indexOf('--client');
+        const clientId = args[clientIndex + 1];
+        if (clientId) {
+          await runOutboundCommand(clientId, bulkMode);
+        } else {
+          console.log('Invalid run-outbound command. Use: agent run-outbound --client <id> [--bulk]');
+          process.exit(1);
+        }
+      } else {
+        console.log('Invalid run-outbound command. Use: agent run-outbound --client <id> [--bulk]');
         process.exit(1);
       }
     } else if (command === 'pause') {

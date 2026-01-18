@@ -1,4 +1,5 @@
-//agent/agentContext.ts
+// agent/agentContext.ts
+
 import { createClient } from '@supabase/supabase-js';
 import { google } from 'googleapis';
 import { setCredentials } from '../lib/google-auth';
@@ -10,9 +11,11 @@ export interface AgentContext {
   gmail: any;
   calendar: any;
   apiKey: string;
+  bulkMode: boolean;
 }
 
-export async function createAgentContext(clientId: string): Promise<AgentContext | null> {
+export async function createAgentContext(clientId: string, bulkMode: boolean = false): Promise<AgentContext | null> {
+  console.log(`DEBUG: createAgentContext called with bulkMode=${bulkMode}`);
   const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY!
@@ -28,21 +31,24 @@ export async function createAgentContext(clientId: string): Promise<AgentContext
     .single();
 
   if (clientError || !client) {
-    return null;
+    console.error('Client fetch error:', clientError);
+    throw new Error('CLIENT_NOT_FOUND');
   }
 
   if (!client.google_oauth_tokens) {
-    return null;
+    console.error('No google_oauth_tokens for client');
+    throw new Error('NO_OAUTH_TOKENS');
   }
 
-  // Parse tokens
+  // Initialize tokens correctly
   let tokens;
   try {
     tokens = typeof client.google_oauth_tokens === 'string'
       ? JSON.parse(client.google_oauth_tokens)
       : client.google_oauth_tokens;
   } catch (parseError) {
-    return null;
+    console.error('Token parse error:', parseError);
+    throw new Error('TOKEN_PARSE_FAILED');
   }
 
   // Check token expiry and refresh if needed
@@ -70,6 +76,7 @@ export async function createAgentContext(clientId: string): Promise<AgentContext
     supabase,
     gmail,
     calendar,
-    apiKey
+    apiKey,
+    bulkMode
   };
 }

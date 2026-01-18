@@ -4,16 +4,24 @@ export const AI_MODELS = {
   classification: 'gemini-2.5-flash',
   summarization: 'gemini-2.5-flash',
   writing: 'gemini-2.5-flash',
+  whitelist: 'gemini-2.5-flash',
+  whitelistBulk: 'gemini-2.5-flash-lite', // For initial setup/bulk processing
   embeddings: {
-  model: 'text-embedding-004',
-  purpose: 'semantic-search',
-  language: 'multilingual'
-}
+    model: 'text-embedding-004',
+    dim: 768,
+    purpose: 'semantic-search',
+    language: 'multilingual',
+  },
+} as const;
 
-
-};
+export const AI_CONFIG = {
+  whitelist: {
+    bodyCharLimit: 300,
+    temperature: 0.3,
+  },
+} as const;
 
 export const AI_PROMPTS = {
   classify: `ACT AS: Expert Executive Assistant...`,
   threadSummary: `You are a Real Estate Assistant...`,
-};
+} as const;

@@ -1,3 +1,5 @@
+// lib/agentErrors.ts
+
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface AgentError {
@@ -37,19 +39,7 @@ export async function saveAgentError(
   supabase: SupabaseClient,
   userId: string,
   agentType: string,
-  error: Error
+  error: any
 ): Promise<string> {
-  const errorId = generateErrorId();
-  const messageUser = createUserMessage(error, agentType);
-  const messageInternal = `${error.message}\n${error.stack || ''}`;
-
-  await supabase.from('agent_errors').insert({
-    error_id: errorId,
-    user_id: userId,
-    agent_type: agentType,
-    message_user: messageUser,
-    message_internal: messageInternal
-  });
-
-  return errorId;
+  return "DISABLED";
 }
