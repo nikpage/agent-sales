@@ -1,44 +1,40 @@
 // pages/api/auth/google/callback.js
 
-import { google } from 'googleapis'
-import { getTokensFromCode, setCredentials } from '../../../../lib/google-auth'
-import { supabase } from '../../../../lib/supabase'
+import { supabase } from '../../../../lib/supabaseClient';
 
 export default async function handler(req, res) {
-  const { code, state } = req.query
-  if (!code) return res.status(400).end()
+  const { code } = req.query;
 
-  const tokens = await getTokensFromCode(code)
-
-  const { data: existing } = await supabase
-    .from('users')
-    .select('google_oauth_tokens')
-    .eq('id', state)
-    .single()
-
-  const merged = {
-    ...(existing?.google_oauth_tokens || {}),
-    ...tokens,
-    refresh_token:
-      existing?.google_oauth_tokens?.refresh_token || tokens.refresh_token
+  if (!code) {
+    return res.status(400).json({ error: 'No code' });
   }
 
-  await supabase
-    .from('users')
-    .update({ google_oauth_tokens: merged })
-    .eq('id', state)
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+      grant_type: 'authorization_code',
+    }),
+  });
 
-  const auth = setCredentials(merged)
-  const gmail = google.gmail({ version: 'v1', auth })
+  const tokens = await tokenResponse.json();
 
-  const watchResponse = await gmail.users.watch({
-    userId: 'me',
-    requestBody: {
-      topicName: process.env.GMAIL_PUBSUB_TOPIC
-    }
-  })
+  if (tokens.error) {
+    return res.status(400).json(tokens);
+  }
 
-  console.log('WATCH RESPONSE:', JSON.stringify(watchResponse.data))
+  const { data: user } = await supabase.auth.getUser();
 
-  return res.redirect('/')
+  await supabase.from('user_tokens').upsert({
+    user_id: user.id,
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_at: new Date(Date.now() + tokens.expires_in * 1000),
+  });
+
+  res.redirect('/dashboard');
 }
