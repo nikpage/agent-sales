@@ -1,8 +1,7 @@
-// pages/api/auth/google/callback.js
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-import { supabase } from '../../../../lib/supabaseClient';
-
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   const { code } = req.query;
 
   if (!code) {
@@ -27,7 +26,7 @@ export default async function handler(req, res) {
     return res.status(400).json(tokens);
   }
 
-  const { data: user } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
   await supabase.from('user_tokens').upsert({
     user_id: user.id,
@@ -37,4 +36,4 @@ export default async function handler(req, res) {
   });
 
   res.redirect('/dashboard');
-}
+};
