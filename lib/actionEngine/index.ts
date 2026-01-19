@@ -13,8 +13,9 @@ const MAX_ACTIONS_RETURNED = 3;
 export async function proposeActions(thread_id: string): Promise<Action[]> {
   try {
     // Step 1: Assemble context
+
     const context = await assembleContext(thread_id);
-    if (!context) {
+   if (!context) {
       console.warn('[actionEngine] Context assembly failed, returning empty');
       return [];
     }

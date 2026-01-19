@@ -6,6 +6,7 @@ import { AgentContext } from '../agentContext';
 import { retry } from '../retryPolicy';
 import { getCpPoints } from '../../lib/cpPoints';
 import { validateThreadSummary, ThreadSummary } from '../../lib/ai/schemas';
+import { proposeActions } from '../../lib/actionEngine';
 
 async function updateThreadSummary(
   supabase: any,
@@ -273,6 +274,8 @@ export async function threadEmail(
   }
 
   await updateThreadSummary(ctx.supabase, conversationId, ctx.clientId, ctx.apiKey);
+
+  await proposeActions(ctx.supabase, conversationId, ctx.clientId);
 
   return conversationId;
 }
