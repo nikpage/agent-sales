@@ -275,7 +275,6 @@ export async function threadEmail(
 
   await updateThreadSummary(ctx.supabase, conversationId, ctx.clientId, ctx.apiKey);
 
-  await proposeActions(ctx.supabase, conversationId, ctx.clientId);
-
+await proposeActions(conversationId);
   return conversationId;
 }
