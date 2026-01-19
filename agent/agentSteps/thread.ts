@@ -5,31 +5,7 @@ import { getEmbedding, updateConversationEmbedding } from '../../lib/embeddings'
 import { AgentContext } from '../agentContext';
 import { retry } from '../retryPolicy';
 import { getCpPoints } from '../../lib/cpPoints';
-import { safeStringify } from '../../lib/utils';
-
-type ConversationSummary = {
-  context: string;
-  current_state: string;
-  next_steps: string[];
-  risks: string[];
-  last_touch: {
-    participant: string;
-    timestamp: string;
-  };
-};
-
-function isValidSummary(summary: any): boolean {
-  return (
-    typeof summary === 'object' &&
-    typeof summary.context === 'string' &&
-    typeof summary.current_state === 'string' &&
-    Array.isArray(summary.next_steps) &&
-    Array.isArray(summary.risks) &&
-    typeof summary.last_touch === 'object' &&
-    typeof summary.last_touch?.participant === 'string' &&
-    typeof summary.last_touch?.timestamp === 'string'
-  );
-}
+import { validateThreadSummary, ThreadSummary } from '../../lib/ai/schemas';
 
 async function updateThreadSummary(
   supabase: any,
@@ -194,33 +170,25 @@ ${messageContext}
 Output JSON only:`;
     }
 
+    const retryPrompt = `OUTPUT VALID JSON ONLY. No explanation, no markdown, no code fences.\n\n${prompt}`;
+
     const result = await retry(() => model.generateContent(prompt));
     const responseText = result.response.text().trim();
 
-    // Parse JSON
-    let summaryJson: ConversationSummary;
-    try {
-      summaryJson = JSON.parse(responseText);
-    } catch {
-      // Try to extract JSON if wrapped in code blocks
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Failed to parse JSON from LLM response');
-      }
-      summaryJson = JSON.parse(jsonMatch[0]);
-    }
+    // Validate with Zod, retry once if invalid
+    const summaryJson = await validateThreadSummary(
+      responseText,
+      async () => {
+        const retryResult = await retry(() => model.generateContent(retryPrompt));
+        return retryResult.response.text().trim();
+      },
+      { supabase, clientId: userId },
+      threadId
+    );
 
-    // Validate summary structure
-    if (!isValidSummary(summaryJson)) {
-      await supabase
-        .from('agent_errors')
-        .insert({
-          user_id: userId,
-          agent_type: 'thread_summary',
-          message_user: 'Invalid summary JSON structure',
-          message_internal: `ThreadId: ${threadId}\nInvalid summary: ${safeStringify(summaryJson)}`
-        });
-      return; // Skip DB update
+    // If validation failed, skip DB update
+    if (!summaryJson) {
+      return;
     }
 
     // Update summary and message counter
@@ -235,17 +203,16 @@ Output JSON only:`;
       .eq('id', threadId);
 
   } catch (error) {
-    // Log error to agent_errors
+    // Log error to agent_errors, never throw
     const errorMsg = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : '';
 
     await supabase
       .from('agent_errors')
       .insert({
         user_id: userId,
-        agent_type: 'thread_summary',
+        agent_type: 'thread',
         message_user: 'Failed to generate conversation summary',
-        message_internal: `ThreadId: ${threadId}\nError: ${errorMsg}\nStack: ${errorStack}`
+        message_internal: `ThreadId: ${threadId}, Error: ${errorMsg}`
       });
 
     // Continue without throwing
@@ -267,9 +234,9 @@ export async function threadEmail(
     const errorMsg = 'Embedding missing for message';
     await ctx.supabase.from('agent_errors').insert({
       user_id: ctx.clientId,
-      agent_type: 'thread_matching',
+      agent_type: 'thread',
       message_user: 'Cannot match thread without embedding',
-      message_internal: `MessageId: ${messageId}\nError: ${errorMsg}`
+      message_internal: `MessageId: ${messageId}, Error: ${errorMsg}`
     });
     throw new Error(`Embedding not found for message ${messageId}`);
   }
@@ -285,7 +252,7 @@ export async function threadEmail(
     .update({ last_updated: new Date().toISOString() })
     .eq('id', conversationId);
 
-console.log('About to update embedding:', embedding.slice(0, 5));
+  console.log('About to update embedding:', embedding.slice(0, 5));
 
   // Validate embedding before updating conversation
   const isValidEmbedding =
@@ -297,7 +264,7 @@ console.log('About to update embedding:', embedding.slice(0, 5));
   if (!isValidEmbedding) {
     await ctx.supabase.from('agent_errors').insert({
       user_id: ctx.clientId,
-      agent_type: 'thread_embedding',
+      agent_type: 'thread',
       message_user: 'Invalid message embedding shape/type',
       message_internal: `MessageId: ${messageId}, Type: ${typeof embedding}, Length: ${Array.isArray(embedding) ? embedding.length : 'N/A'}`
     });

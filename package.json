@@ -20,7 +20,8 @@
     "next": "^16.0.7",
     "nodemailer": "^7.0.11",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1"
+    "react-dom": "^19.2.1",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/react": "19.2.7",

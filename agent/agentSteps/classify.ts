@@ -1,8 +1,11 @@
+// agent/agentSteps/classify.ts
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AgentContext } from '../agentContext';
 import { retry } from '../retryPolicy';
+import { validateClassification, Classification, CLASSIFICATION_FALLBACK } from '../../lib/ai/schemas';
 
-export async function classifyEmail(text: string, ctx: AgentContext, currentCpSummary?: string | null): Promise<any> {
+export async function classifyEmail(text: string, ctx: AgentContext, currentCpSummary?: string | null): Promise<Classification> {
   const genAI = new GoogleGenerativeAI(ctx.apiKey);
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
@@ -49,13 +52,35 @@ export async function classifyEmail(text: string, ctx: AgentContext, currentCpSu
   }
   `;
 
+  const retryPrompt = `
+  OUTPUT VALID JSON ONLY. No explanation, no markdown, no code fences.
+
+  ${prompt}
+  `;
+
   try {
     const result = await retry(() => model.generateContent(prompt));
     const raw = result.response.text();
-    const jsonString = raw.replace(/^```json/gm, '').replace(/^```/gm, '').trim();
-    return JSON.parse(jsonString);
+
+    const validated = await validateClassification(
+      raw,
+      async () => {
+        const retryResult = await retry(() => model.generateContent(retryPrompt));
+        return retryResult.response.text();
+      },
+      { supabase: ctx.supabase, clientId: ctx.clientId }
+    );
+
+    return validated;
   } catch (err: any) {
-    // Fail-safe: Treat as standard business info
-    return { relevance: 'BUSINESS', importance: 'REGULAR', type: 'INFO', summary_czech: 'Chyba analýzy.' };
+    // Log and return fallback
+    await ctx.supabase.from('agent_errors').insert({
+      user_id: ctx.clientId,
+      agent_type: 'classify',
+      message_user: 'Classification failed',
+      message_internal: `Error: ${err?.message || String(err)}`,
+    });
+
+    return CLASSIFICATION_FALLBACK;
   }
 }
