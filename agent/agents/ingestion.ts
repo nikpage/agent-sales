@@ -1,6 +1,7 @@
 // agent/agents/ingestion.ts
 
 import type { AgentContext } from '../agentContext';
+import { withRetry } from '../retryPolicy';
 import { storeMessage } from '../../lib/ingestion';
 import { generateEmbedding, storeEmbedding } from '../../lib/embeddings';
 import { threadEmail } from '../agentSteps/thread';
@@ -9,7 +10,7 @@ import { ingestEmail } from '../agentSteps/ingest';
 import { whitelistPrompt } from '../../lib/ai/prompts/whitelist';
 import { AI_MODELS, AI_CONFIG } from '../../lib/ai/config';
 import { generateText } from '../../lib/ai/google';
-import { findOrCreateConversation } from '../../lib/conversation';
+import { findOrCreateConversation, attachMessageToConversation } from '../../lib/conversation';
 
 async function checkWhitelist(ctx: AgentContext, emailData: any): Promise<boolean> {
   const bodySnippet = (emailData.cleanedText || '').slice(0, AI_CONFIG.whitelist.bodyCharLimit);
@@ -32,12 +33,15 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
   console.log(`Ingestion mode: ${ctx.bulkMode ? 'BULK' : 'NORMAL'}, using model: ${model}`);
   let processedMessages = 0;
 
-  const resList = await ctx.gmail.users.messages.list({
-    userId: 'me',
-    labelIds: ['INBOX'],
-    q: 'in:inbox is:unread',
-    maxResults: 50,
-  });
+  const resList = await withRetry(
+    () => ctx.gmail.users.messages.list({
+      userId: 'me',
+      labelIds: ['INBOX'],
+      q: 'in:inbox is:unread',
+      maxResults: 50,
+    }),
+    'gmail.list'
+  );
 
   const messages = resList.data.messages ?? [];
 
@@ -66,18 +70,31 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
     if (cpData?.is_blacklisted) {
       // Mark as read and skip
       try {
-        await ctx.gmail.users.messages.modify({
-          userId: 'me',
-          id: msgStub.id,
-          requestBody: { removeLabelIds: ['UNREAD'] },
-        });
+        await withRetry(
+          () => ctx.gmail.users.messages.modify({
+            userId: 'me',
+            id: msgStub.id,
+            requestBody: { removeLabelIds: ['UNREAD'] },
+          }),
+          'gmail.modify'
+        );
       } catch (error) {
         console.error('Failed to modify message labels:', error);
       }
       continue;
     }
 
-    // Generate embedding BEFORE finding/creating conversation
+    // Store message FIRST (dedupe happens here)
+    const storeResult = await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData);
+
+    // If duplicate, skip all further processing
+    if (storeResult.isDuplicate) {
+      continue;
+    }
+
+    const messageId = storeResult.id;
+
+    // Generate embedding
     let embedding;
     try {
       embedding = await generateEmbedding(emailData.cleanedText || '');
@@ -91,24 +108,28 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
       continue;
     }
 
+    // Store embedding
+    await storeEmbedding(ctx.supabase, messageId, embedding);
+
+    // Find or create conversation
     const conversationId = await findOrCreateConversation(ctx.supabase, ctx.client.id, cpId, embedding);
 
-    const messageId = await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData, conversationId);
-    if (!messageId) continue;
-
-    // Store embedding (already generated)
-    await storeEmbedding(ctx.supabase, messageId, embedding);
+    // Attach conversation to message
+    await attachMessageToConversation(ctx.supabase, messageId, conversationId);
 
     await threadEmail(ctx, cpId, emailData.cleanedText || '', messageId, { importance: 'REGULAR' }, emailData, conversationId);
 
     processedMessages++;
 
     try {
-      await ctx.gmail.users.messages.modify({
-        userId: 'me',
-        id: msgStub.id,
-        requestBody: { removeLabelIds: ['UNREAD'] },
-      });
+      await withRetry(
+        () => ctx.gmail.users.messages.modify({
+          userId: 'me',
+          id: msgStub.id,
+          requestBody: { removeLabelIds: ['UNREAD'] },
+        }),
+        'gmail.modify'
+      );
     } catch (error) {
       console.error('Failed to modify message labels:', error);
     }

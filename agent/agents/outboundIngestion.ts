@@ -1,11 +1,12 @@
 // agent/agents/outboundIngestion.ts
 
 import type { AgentContext } from '../agentContext';
+import { withRetry } from '../retryPolicy';
 import { storeMessage, getEmailDetails } from '../../lib/ingestion';
 import { generateEmbedding, storeEmbedding } from '../../lib/embeddings';
 import { threadEmail } from '../agentSteps/thread';
 import { resolveCp } from '../../lib/cp';
-import { findOrCreateConversation } from '../../lib/conversation';
+import { findOrCreateConversation, attachMessageToConversation } from '../../lib/conversation';
 
 function extractRecipients(toHeader: string, ccHeader: string): string[] {
   const recipients: string[] = [];
@@ -33,11 +34,14 @@ export async function runOutboundIngestion(ctx: AgentContext): Promise<number> {
   console.log('Outbound ingestion mode: processing sent emails');
   let processedMessages = 0;
 
-  const resList = await ctx.gmail.users.messages.list({
-    userId: 'me',
-    labelIds: ['SENT'],
-    maxResults: 50,
-  });
+  const resList = await withRetry(
+    () => ctx.gmail.users.messages.list({
+      userId: 'me',
+      labelIds: ['SENT'],
+      maxResults: 50,
+    }),
+    'gmail.list'
+  );
 
   const messages = resList.data.messages ?? [];
 
@@ -49,26 +53,42 @@ export async function runOutboundIngestion(ctx: AgentContext): Promise<number> {
       const recipients = extractRecipients(emailData.to, '');
       if (recipients.length === 0) continue;
 
-      let embedding;
-      try {
-        embedding = await generateEmbedding(emailData.cleanedText || '');
-      } catch (error) {
-        console.error('Failed to generate embedding, skipping message:', error);
-        continue;
-      }
-
-      if (!embedding) {
-        console.error('Embedding is null, skipping message');
-        continue;
-      }
-
       for (const recipientEmail of recipients) {
         const cpId = await resolveCp(ctx.supabase, ctx.client.id, `<${recipientEmail}>`, emailData.cleanedText);
-        const conversationId = await findOrCreateConversation(ctx.supabase, ctx.client.id, cpId, embedding);
-        const messageId = await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData, conversationId, 'outbound');
-        if (!messageId) continue;
 
+        // Store message FIRST (dedupe happens here)
+        const storeResult = await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData, 'outbound');
+
+        // If duplicate, skip to next recipient
+        if (storeResult.isDuplicate) {
+          continue;
+        }
+
+        const messageId = storeResult.id;
+
+        // Generate embedding
+        let embedding;
+        try {
+          embedding = await generateEmbedding(emailData.cleanedText || '');
+        } catch (error) {
+          console.error('Failed to generate embedding, skipping message:', error);
+          continue;
+        }
+
+        if (!embedding) {
+          console.error('Embedding is null, skipping message');
+          continue;
+        }
+
+        // Store embedding
         await storeEmbedding(ctx.supabase, messageId, embedding);
+
+        // Find or create conversation
+        const conversationId = await findOrCreateConversation(ctx.supabase, ctx.client.id, cpId, embedding);
+
+        // Attach conversation to message
+        await attachMessageToConversation(ctx.supabase, messageId, conversationId);
+
         await threadEmail(ctx, cpId, emailData.cleanedText || '', messageId, { importance: 'REGULAR' }, emailData, conversationId);
       }
 

@@ -1,6 +1,7 @@
 // lib/ingestion.ts
 
 import { gmail_v1 } from 'googleapis';
+import { withRetry } from '../agent/retryPolicy';
 
 interface EmailData {
   id: string;
@@ -15,15 +16,23 @@ interface EmailData {
   rfcMessageId: string | null;
 }
 
+interface StoreMessageResult {
+  id: string;
+  isDuplicate: boolean;
+}
+
 export async function getEmailDetails(
   gmail: gmail_v1.Gmail,
   messageId: string
 ): Promise<EmailData> {
-  const response = await gmail.users.messages.get({
-    userId: 'me',
-    id: messageId,
-    format: 'full',
-  });
+  const response = await withRetry(
+    () => gmail.users.messages.get({
+      userId: 'me',
+      id: messageId,
+      format: 'full',
+    }),
+    'gmail.get'
+  );
 
   const msg = response.data;
   const headers = msg.payload?.headers || [];
@@ -85,13 +94,9 @@ export async function storeMessage(
   userId: string,
   cpId: string,
   emailData: EmailData,
-  conversationId: string,
   direction: 'inbound' | 'outbound' = 'inbound'
-): Promise<string | null> {
-  if (!conversationId || conversationId.length === 0) {
-    throw new Error('conversationId is required');
-  }
-
+): Promise<StoreMessageResult> {
+  // Check for duplicate by universal_message_id first
   if (emailData.rfcMessageId) {
     const { data: existing, error } = await supabase
       .from('messages')
@@ -100,18 +105,20 @@ export async function storeMessage(
       .maybeSingle();
 
     if (error) throw error;
-    if (existing) return existing.id as string;
-  } else {
-    const { data: existing, error } = await supabase
-      .from('messages')
-      .select('id')
-      .eq('external_id', emailData.id)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (existing) return existing.id as string;
+    if (existing) return { id: existing.id as string, isDuplicate: true };
   }
 
+  // Check for duplicate by external_id
+  const { data: existingByExternal, error: extError } = await supabase
+    .from('messages')
+    .select('id')
+    .eq('external_id', emailData.id)
+    .maybeSingle();
+
+  if (extError) throw extError;
+  if (existingByExternal) return { id: existingByExternal.id as string, isDuplicate: true };
+
+  // Insert new message without conversation_id
   const { data: inserted, error } = await supabase
     .from('messages')
     .insert({
@@ -122,7 +129,6 @@ export async function storeMessage(
       cleaned_text: emailData.cleanedText,
       timestamp: emailData.timestamp,
       occurred_at: emailData.occurredAt,
-      conversation_id: conversationId,
       external_id: emailData.id,
       external_thread_id: emailData.threadId,
       universal_message_id: emailData.rfcMessageId,
@@ -130,9 +136,37 @@ export async function storeMessage(
     .select('id')
     .single();
 
+  // Handle race condition: another process inserted same message
   if (error && error.code === '23505') {
-    return null;
+    // Re-select by universal_message_id first
+    if (emailData.rfcMessageId) {
+      const { data: raceExisting, error: raceErr } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('universal_message_id', emailData.rfcMessageId)
+        .maybeSingle();
+
+      if (raceErr) throw raceErr;
+      if (raceExisting) return { id: raceExisting.id as string, isDuplicate: true };
+    }
+
+    // If not found by universal_message_id, re-select by external_id
+    const { data: raceExistingExt, error: raceExtErr } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('external_id', emailData.id)
+      .maybeSingle();
+
+    if (raceExtErr) throw raceExtErr;
+    if (raceExistingExt) return { id: raceExistingExt.id as string, isDuplicate: true };
+
+    // Neither found — should never happen
+    throw new Error('Duplicate conflict but could not find existing row by universal_message_id or external_id');
   }
+
   if (error) throw error;
-  return inserted.id as string;
+  if (!inserted || !inserted.id) {
+    throw new Error('Insert succeeded but no id returned');
+  }
+  return { id: inserted.id as string, isDuplicate: false };
 }
