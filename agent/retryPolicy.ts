@@ -52,7 +52,7 @@ function calculateDelay(attempt: number): number {
   // Exponential backoff: 1s, 2s, 4s, 8s, 16s (capped at 30s)
   const exponentialDelay = INITIAL_DELAY_MS * Math.pow(2, attempt - 1);
   const cappedDelay = Math.min(exponentialDelay, MAX_DELAY_MS);
-
+  
   // Add jitter: ±25%
   const jitter = cappedDelay * 0.25 * (Math.random() * 2 - 1);
   return Math.floor(cappedDelay + jitter);
@@ -85,8 +85,8 @@ export async function withRetry<T>(
 
       // Determine delay
       const retryAfterMs = getRetryAfterMs(error);
-      const delay = retryAfterMs !== null
-        ? Math.min(retryAfterMs, MAX_DELAY_MS)
+      const delay = retryAfterMs !== null 
+        ? Math.min(retryAfterMs, MAX_DELAY_MS) 
         : calculateDelay(attempt);
 
       console.warn(`[${label}] Attempt ${attempt} failed, retrying in ${delay}ms...`);

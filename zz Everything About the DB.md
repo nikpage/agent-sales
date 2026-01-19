@@ -1,48 +1,74 @@
---- 1. FULL SCHEMA & RELATIONSHIPS ---
-WITH column_meta AS (
-    SELECT
-        cols.table_name,
-        cols.column_name,
-        cols.data_type,
-        cols.is_nullable,
-        string_agg(tc.constraint_type, ', ') as constraints
-    FROM information_schema.columns cols
-    LEFT JOIN information_schema.key_column_usage kcu
-        ON cols.table_name = kcu.table_name AND cols.column_name = kcu.column_name
-    LEFT JOIN information_schema.table_constraints tc
-        ON kcu.constraint_name = tc.constraint_name
-    WHERE cols.table_schema = 'public'
-    GROUP BY cols.table_name, cols.column_name, cols.data_type, cols.is_nullable
-),
-fk_meta AS (
-    SELECT
-        tc.table_name,
-        kcu.column_name,
-        ccu.table_name AS foreign_table,
-        ccu.column_name AS foreign_col
-    FROM information_schema.table_constraints AS tc
-    JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
-    JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
-    WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'
-)
-SELECT 'TABLE_STRUCTURE' as type, table_name || '.' || column_name as item, data_type as detail, constraints as extra, '' as link FROM column_meta
-UNION ALL
-SELECT 'RELATIONSHIP', table_name, column_name, 'REFERENCES', foreign_table || '(' || foreign_col || ')' FROM fk_meta
-UNION ALL
---- 2. STORED PROCEDURES (RPCs) ---
-SELECT 'RPC_FUNCTION', routine_name, 'Returns: ' || data_type, 'Args: ' || routine_definition, '' FROM information_schema.routines WHERE routine_schema = 'public'
-UNION ALL
---- 3. SECURITY (RLS) ---
-SELECT 'RLS_POLICY', tablename, policyname, cmd || ' check: ' || roles[0], qual FROM pg_policies WHERE schemaname = 'public';
-
-
-
-
-
-
-
-
 [
+  {
+    "type": "TABLE_STRUCTURE",
+    "item": "action_proposals.action_type",
+    "detail": "text",
+    "extra": null,
+    "link": ""
+  },
+  {
+    "type": "TABLE_STRUCTURE",
+    "item": "action_proposals.conversation_id",
+    "detail": "uuid",
+    "extra": "FOREIGN KEY",
+    "link": ""
+  },
+  {
+    "type": "TABLE_STRUCTURE",
+    "item": "action_proposals.created_at",
+    "detail": "timestamp with time zone",
+    "extra": null,
+    "link": ""
+  },
+  {
+    "type": "TABLE_STRUCTURE",
+    "item": "action_proposals.id",
+    "detail": "uuid",
+    "extra": "PRIMARY KEY",
+    "link": ""
+  },
+  {
+    "type": "TABLE_STRUCTURE",
+    "item": "action_proposals.impact_score",
+    "detail": "numeric",
+    "extra": null,
+    "link": ""
+  },
+  {
+    "type": "TABLE_STRUCTURE",
+    "item": "action_proposals.payload",
+    "detail": "jsonb",
+    "extra": null,
+    "link": ""
+  },
+  {
+    "type": "TABLE_STRUCTURE",
+    "item": "action_proposals.personal_score",
+    "detail": "numeric",
+    "extra": null,
+    "link": ""
+  },
+  {
+    "type": "TABLE_STRUCTURE",
+    "item": "action_proposals.priority_score",
+    "detail": "numeric",
+    "extra": null,
+    "link": ""
+  },
+  {
+    "type": "TABLE_STRUCTURE",
+    "item": "action_proposals.rationale",
+    "detail": "text",
+    "extra": null,
+    "link": ""
+  },
+  {
+    "type": "TABLE_STRUCTURE",
+    "item": "action_proposals.urgency_score",
+    "detail": "numeric",
+    "extra": null,
+    "link": ""
+  },
   {
     "type": "TABLE_STRUCTURE",
     "item": "agent_errors.agent_type",
@@ -222,7 +248,7 @@ SELECT 'RLS_POLICY', tablename, policyname, cmd || ' check: ' || roles[0], qual 
     "type": "TABLE_STRUCTURE",
     "item": "cp_states.cp_id",
     "detail": "uuid",
-    "extra": "PRIMARY KEY, FOREIGN KEY",
+    "extra": "FOREIGN KEY, PRIMARY KEY",
     "link": ""
   },
   {
@@ -404,7 +430,7 @@ SELECT 'RLS_POLICY', tablename, policyname, cmd || ' check: ' || roles[0], qual 
     "type": "TABLE_STRUCTURE",
     "item": "message_embeddings.message_id",
     "detail": "uuid",
-    "extra": "FOREIGN KEY, PRIMARY KEY",
+    "extra": "PRIMARY KEY, FOREIGN KEY",
     "link": ""
   },
   {
@@ -753,6 +779,13 @@ SELECT 'RLS_POLICY', tablename, policyname, cmd || ' check: ' || roles[0], qual 
   {
     "type": "RELATIONSHIP",
     "item": "messages",
+    "detail": "conversation_id",
+    "extra": "REFERENCES",
+    "link": "conversation_threads(id)"
+  },
+  {
+    "type": "RELATIONSHIP",
+    "item": "action_proposals",
     "detail": "conversation_id",
     "extra": "REFERENCES",
     "link": "conversation_threads(id)"
@@ -1624,6 +1657,13 @@ SELECT 'RLS_POLICY', tablename, policyname, cmd || ' check: ' || roles[0], qual 
     "detail": "Returns: USER-DEFINED",
     "extra": null,
     "link": ""
+  },
+  {
+    "type": "RLS_POLICY",
+    "item": "action_proposals",
+    "detail": "action_proposals_select_own",
+    "extra": null,
+    "link": "(EXISTS ( SELECT 1\n   FROM conversation_threads ct\n  WHERE ((ct.id = action_proposals.conversation_id) AND (ct.user_id = auth.uid()))))"
   },
   {
     "type": "RLS_POLICY",

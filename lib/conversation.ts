@@ -36,7 +36,7 @@ export async function findOrCreateConversation(
   console.log('Embedding first 5 numbers:', messageEmbedding.slice(0, 5));
 
   const now = new Date().toISOString();
-
+  
   // Try to insert new conversation
   const { data: newConversation, error: createErr } = await withRetry(
     () => supabase

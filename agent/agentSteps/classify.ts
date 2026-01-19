@@ -54,7 +54,7 @@ export async function classifyEmail(text: string, ctx: AgentContext, currentCpSu
 
   const retryPrompt = `
   OUTPUT VALID JSON ONLY. No explanation, no markdown, no code fences.
-
+  
   ${prompt}
   `;
 
