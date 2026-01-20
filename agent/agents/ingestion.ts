@@ -28,26 +28,102 @@ async function checkWhitelist(ctx: AgentContext, emailData: any): Promise<boolea
   }
 }
 
-export async function runIngestion(ctx: AgentContext): Promise<number> {
+export async function runIngestion(ctx: AgentContext): Promise<{
+  processedMessages: number;
+  newHistoryId: string | null;
+}> {
   const model = ctx.bulkMode ? AI_MODELS.whitelistBulk : AI_MODELS.whitelist;
   console.log(`Ingestion mode: ${ctx.bulkMode ? 'BULK' : 'NORMAL'}, using model: ${model}`);
+
   let processedMessages = 0;
+  let duplicateCount = 0;
+  const settings = ctx.client.settings || {};
+  const currentHistoryId = settings.gmail_watch_history_id || null;
 
-  const resList = await withRetry(
-    () => ctx.gmail.users.messages.list({
-      userId: 'me',
-      labelIds: ['INBOX'],
-      q: 'in:inbox is:unread',
-      maxResults: 50,
-    }),
-    'gmail.list'
-  );
+  console.info('ingest_start', { clientId: ctx.client.id, cursor: currentHistoryId });
 
-  const messages = resList.data.messages ?? [];
+  let newHistoryId: string | null = null;
+  let messageIds: string[] = [];
 
-  for (const msgStub of messages) {
-    const emailData = await ingestEmail(ctx, msgStub);
+  // First run: seed with messages.list
+  if (!currentHistoryId) {
+    const resList = await withRetry(
+      () => ctx.gmail.users.messages.list({
+        userId: 'me',
+        labelIds: ['INBOX'],
+        q: 'in:inbox is:unread',
+        maxResults: 50,
+      }),
+      'gmail.list'
+    );
+
+    messageIds = (resList.data.messages ?? []).map(m => m.id!);
+    newHistoryId = resList.data.historyId || null;
+
+  } else {
+    // Subsequent runs: use history.list with pagination
+    let pageToken: string | null | undefined = undefined;
+    let maxHistoryItemId = 0;
+
+    do {
+      const historyRes = await withRetry(
+        () => ctx.gmail.users.history.list({
+          userId: 'me',
+          startHistoryId: currentHistoryId,
+          pageToken: pageToken || undefined,
+        }),
+        'gmail.history.list'
+      );
+
+      const history = historyRes.data.history ?? [];
+
+      // Extract message IDs and track max historyItem.id
+      for (const historyItem of history) {
+        // Track max history item ID
+        if (historyItem.id) {
+          const itemId = parseInt(historyItem.id);
+          if (itemId > maxHistoryItemId) {
+            maxHistoryItemId = itemId;
+          }
+        }
+
+        // Collect message IDs from messagesAdded
+        if (historyItem.messagesAdded) {
+          for (const added of historyItem.messagesAdded) {
+            if (added.message?.id) {
+              messageIds.push(added.message.id);
+            }
+          }
+        }
+      }
+
+      pageToken = historyRes.data.nextPageToken;
+    } while (pageToken);
+
+    newHistoryId = maxHistoryItemId > 0 ? maxHistoryItemId.toString() : null;
+  }
+
+  // Process all collected message IDs
+  for (const messageId of messageIds) {
+    const emailData = await ingestEmail(ctx, { id: messageId });
     if (!emailData) continue;
+
+    // Fetch full message to check labels
+    const fullMsg = await withRetry(
+      () => ctx.gmail.users.messages.get({
+        userId: 'me',
+        id: messageId,
+        format: 'minimal',
+      }),
+      'gmail.get'
+    );
+
+    const labels = fullMsg.data.labelIds ?? [];
+
+    // Filter: must be INBOX and UNREAD
+    if (!labels.includes('INBOX') || !labels.includes('UNREAD')) {
+      continue;
+    }
 
     // AI whitelist check
     const isAllowed = await checkWhitelist(ctx, emailData);
@@ -73,7 +149,7 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
         await withRetry(
           () => ctx.gmail.users.messages.modify({
             userId: 'me',
-            id: msgStub.id,
+            id: messageId,
             requestBody: { removeLabelIds: ['UNREAD'] },
           }),
           'gmail.modify'
@@ -89,10 +165,11 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
 
     // If duplicate, skip all further processing
     if (storeResult.isDuplicate) {
+      duplicateCount++;
       continue;
     }
 
-    const messageId = storeResult.id;
+    const msgId = storeResult.id;
 
     // Generate embedding
     let embedding;
@@ -109,15 +186,15 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
     }
 
     // Store embedding
-    await storeEmbedding(ctx.supabase, messageId, embedding);
+    await storeEmbedding(ctx.supabase, msgId, embedding);
 
     // Find or create conversation
     const conversationId = await findOrCreateConversation(ctx.supabase, ctx.client.id, cpId, embedding);
 
     // Attach conversation to message
-    await attachMessageToConversation(ctx.supabase, messageId, conversationId);
+    await attachMessageToConversation(ctx.supabase, msgId, conversationId);
 
-    await threadEmail(ctx, cpId, emailData.cleanedText || '', messageId, { importance: 'REGULAR' }, emailData, conversationId);
+    await threadEmail(ctx, cpId, emailData.cleanedText || '', msgId, { importance: 'REGULAR' }, emailData, conversationId);
 
     processedMessages++;
 
@@ -125,7 +202,7 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
       await withRetry(
         () => ctx.gmail.users.messages.modify({
           userId: 'me',
-          id: msgStub.id,
+          id: messageId,
           requestBody: { removeLabelIds: ['UNREAD'] },
         }),
         'gmail.modify'
@@ -135,5 +212,12 @@ export async function runIngestion(ctx: AgentContext): Promise<number> {
     }
   }
 
-  return processedMessages;
+  console.info('ingest_end', {
+    clientId: ctx.client.id,
+    newCursor: newHistoryId,
+    inserted: processedMessages,
+    skipped: duplicateCount
+  });
+
+  return { processedMessages, newHistoryId };
 }

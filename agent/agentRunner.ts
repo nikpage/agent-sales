@@ -6,12 +6,26 @@ import { runIngestion } from './agents/ingestion';
 import { supabase as globalDb } from '../lib/supabase';
 import { saveAgentError } from '../lib/agentErrors';
 
+// In-memory lock per client
+const clientLocks = new Map<string, { running: boolean }>();
+
 export async function runAgentForClient(clientId: string, bulkMode: boolean = false): Promise<{
   clientId: string;
   processedMessages: number;
   errors: string[];
 }> {
   console.log(`DEBUG: runAgentForClient called with bulkMode=${bulkMode}`);
+
+  // Lock check
+  const lock = clientLocks.get(clientId);
+  if (lock?.running) {
+    console.info('ingest_skip', { clientId, reason: 'lock' });
+    return { clientId, processedMessages: 0, errors: ['lock'] };
+  }
+
+  // Set lock
+  clientLocks.set(clientId, { running: true });
+
   let processedMessages = 0;
   const errors: string[] = [];
 
@@ -31,7 +45,27 @@ export async function runAgentForClient(clientId: string, bulkMode: boolean = fa
 
     await renewIfExpiring(ctx.supabase, ctx.client.id, tokens, settings);
 
-    processedMessages = await runIngestion(ctx);
+    const result = await runIngestion(ctx);
+    processedMessages = result.processedMessages;
+
+    // Update cursor if ingestion succeeded
+    if (result.newHistoryId) {
+      const currentHistoryId = settings.gmail_watch_history_id;
+      const newHistoryId = Math.max(
+        parseInt(currentHistoryId || '0'),
+        parseInt(result.newHistoryId)
+      ).toString();
+
+      await ctx.supabase
+        .from('users')
+        .update({
+          settings: {
+            ...settings,
+            gmail_watch_history_id: newHistoryId
+          }
+        })
+        .eq('id', clientId);
+    }
 
     return { clientId, processedMessages, errors };
   } catch (err) {
@@ -44,5 +78,8 @@ export async function runAgentForClient(clientId: string, bulkMode: boolean = fa
     console.error('Error running agent for client:', err);
     await saveAgentError(globalDb, clientId, 'agent_runner', msg);
     return { clientId, processedMessages: 0, errors: [msg] };
+  } finally {
+    // Always unlock
+    clientLocks.delete(clientId);
   }
 }
