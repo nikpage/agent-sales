@@ -41,9 +41,13 @@ export type ActionPayload =
 export interface Action {
   type: ActionType;
   payload: ActionPayload;
-  priority_score: number;
   rationale: string;
   confidence?: number;
+  urgency: number;
+  batchable: boolean;
+  status: 'PENDING' | 'APPROVED' | 'SNOOZED' | 'DISMISSED';
+  snoozed_until?: string | null;
+  acted_at?: string | null;
 }
 
 export interface ThreadState {

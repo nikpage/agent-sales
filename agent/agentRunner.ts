@@ -6,23 +6,19 @@ import { runIngestion } from './agents/ingestion';
 import { supabase as globalDb } from '../lib/supabase';
 import { saveAgentError } from '../lib/agentErrors';
 
-export async function runAgentForClient(clientId: string, bulkMode: boolean = false): Promise<{
-  clientId: string;
-  processedMessages: number;
-  errors: string[];
-}> {
-  console.log(`DEBUG: runAgentForClient called with bulkMode=${bulkMode}`);
-
-  let processedMessages = 0;
-  const errors: string[] = [];
-
+export async function runIngestIfNeeded(
+  userId: string,
+  reason: 'webhook' | 'manual' | 'calendar' | 'retry',
+  bulkMode: boolean = false
+): Promise<void> {
   try {
-    const ctx = await createAgentContext(clientId, bulkMode);
+    const ctx = await createAgentContext(userId, bulkMode);
     if (!ctx) throw new Error('CONTEXT_INIT_FAILED');
 
     const settings = ctx.client.settings || {};
+
     if (settings.agent_paused === true) {
-      return { clientId, processedMessages: 0, errors: ['Agent paused'] };
+      return;
     }
 
     const tokens =
@@ -33,9 +29,7 @@ export async function runAgentForClient(clientId: string, bulkMode: boolean = fa
     await renewIfExpiring(ctx.supabase, ctx.client.id, tokens, settings);
 
     const result = await runIngestion(ctx);
-    processedMessages = result.processedMessages;
 
-    // Update cursor if ingestion succeeded
     if (result.newHistoryId) {
       const currentHistoryId = settings.gmail_watch_history_id;
       const newHistoryId = Math.max(
@@ -51,10 +45,25 @@ export async function runAgentForClient(clientId: string, bulkMode: boolean = fa
             gmail_watch_history_id: newHistoryId
           }
         })
-        .eq('id', clientId);
+        .eq('id', userId);
     }
 
-    return { clientId, processedMessages, errors };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'INGEST_FAILED';
+    await saveAgentError(globalDb, userId, 'ingestion', msg);
+  }
+}
+
+export async function runAgentForClient(clientId: string, bulkMode: boolean = false): Promise<{
+  clientId: string;
+  processedMessages: number;
+  errors: string[];
+}> {
+  console.log(`DEBUG: runAgentForClient called with bulkMode=${bulkMode}`);
+
+  try {
+    await runIngestIfNeeded(clientId, 'manual', bulkMode);
+    return { clientId, processedMessages: 0, errors: [] };
   } catch (err) {
     const msg =
       err instanceof Error
@@ -62,8 +71,6 @@ export async function runAgentForClient(clientId: string, bulkMode: boolean = fa
         : typeof err === 'string'
         ? err
         : 'AGENT_FAILED';
-    console.error('Error running agent for client:', err);
-    await saveAgentError(globalDb, clientId, 'agent_runner', msg);
     return { clientId, processedMessages: 0, errors: [msg] };
   }
 }

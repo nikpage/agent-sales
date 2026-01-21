@@ -5,10 +5,8 @@ import { supabase } from '../supabase';
 import { Action, ActionType, Context } from './types';
 import { validateAction } from './schemas';
 import { assembleContext } from './contextAssembler';
-import { scoreAction, shouldSuppress, suppressCompetingActions } from './priorityEngine';
+import { shouldSuppress, suppressCompetingActions, filterVisibleActions, rankActions } from './priorityEngine';
 import { getAllCandidates } from './generators';
-
-const MAX_ACTIONS_RETURNED = 3;
 
 export async function proposeActions(thread_id: string): Promise<Action[]> {
   try {
@@ -41,55 +39,31 @@ export async function proposeActions(thread_id: string): Promise<Action[]> {
       return [];
     }
 
-    // Step 4: Score each valid action
-    const scoredActions: Action[] = [];
-    for (const action of validActions) {
-      try {
-        const score = scoreAction(action, context);
-        scoredActions.push({
-          ...action,
-          priority_score: score,
-        });
-      } catch (err) {
-        console.error('[actionEngine] Scoring failed for action:', err);
-        // Skip this action on scoring failure
-      }
-    }
+    // Step 4: Suppress competing actions (same outcome key)
+    const dedupedActions = suppressCompetingActions(validActions);
 
-    if (scoredActions.length === 0) {
-      return [];
-    }
-
-    // Step 5: Suppress competing actions (same outcome key)
-    const dedupedActions = suppressCompetingActions(scoredActions);
-
-    // Step 6: Drop actions below minimum threshold or blacklisted
-    const filteredActions = dedupedActions.filter(a => !shouldSuppress(a.priority_score, context));
+    // Step 5: Drop blacklisted
+    const filteredActions = dedupedActions.filter(a => !shouldSuppress(0, context));
 
     if (filteredActions.length === 0) {
       return [];
     }
 
-    // Step 7: Sort by score descending, cut to top N
-    filteredActions.sort((a, b) => b.priority_score - a.priority_score);
-    const topActions = filteredActions.slice(0, MAX_ACTIONS_RETURNED);
+    // Step 6: Filter visible and rank by urgency
+    const rankedActions = rankActions(filterVisibleActions(filteredActions));
 
-    // Step 8: Insert into action_proposals (immutable, bulk)
+    // Step 7: Insert into action_proposals (immutable, bulk)
 try {
   const { error } = await supabase.from('action_proposals').insert(
-    topActions.map(action => ({
+    rankedActions.map(action => ({
       conversation_id: thread_id,
       action_type: action.type,
       payload: action.payload,
       rationale: action.rationale,
-
-      // scores
-      priority_score: action.priority_score,
-
-      // REQUIRED BY SCHEMA: set explicit defaults so inserts can't fail on NOT NULL
-      impact_score: (action as any).impact_score ?? 0,
-      urgency_score: (action as any).urgency_score ?? 0,
-      personal_score: (action as any).personal_score ?? 0,
+      urgency: action.urgency,
+      status: action.status,
+      snoozed_until: action.snoozed_until,
+      acted_at: action.acted_at,
     }))
   );
 
@@ -100,8 +74,8 @@ try {
   console.error('[actionEngine] Failed to persist actions:', err);
 }
 
-    // Step 9: Return actions
-    return topActions;
+    // Step 8: Return actions
+    return rankedActions;
 
   } catch (err) {
     // Fail closed: return empty array
