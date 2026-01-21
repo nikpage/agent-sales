@@ -1,4 +1,5 @@
 // cli/setup-gmail-watch.ts
+
 import { createClient } from '@supabase/supabase-js';
 import { google } from 'googleapis';
 import { getOAuth2Client } from '../lib/google-auth';
@@ -25,34 +26,34 @@ async function setupWatch(userId: string) {
 
   const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-  // Replace with your actual Google Cloud project ID and topic name
-  const topicName = 'projects/sales-agent-484509/topics/gmail-notifications';
-
   try {
-    const response = await gmail.users.watch({
+    // Initialize cursor by getting current historyId from messages.list
+    const response = await gmail.users.messages.list({
       userId: 'me',
-      requestBody: {
-        topicName: topicName,
-        labelIds: ['INBOX', 'SENT']
-      }
+      maxResults: 1
     });
 
-    console.log('Watch setup successful:', response.data);
+    if (response.data.historyId) {
+      console.log('Initial historyId obtained:', response.data.historyId);
 
-    // Save watch info to user
-    await supabase
-      .from('users')
-      .update({
-        settings: {
-          ...user.settings,
-          gmail_watch_expiration: response.data.expiration,
-          gmail_watch_history_id: response.data.historyId
-        }
-      })
-      .eq('id', userId);
+      // Save initial cursor for polling
+      await supabase
+        .from('users')
+        .update({
+          settings: {
+            ...user.settings,
+            gmail_watch_history_id: response.data.historyId
+          }
+        })
+        .eq('id', userId);
+
+      console.log('Polling cursor initialized successfully');
+    } else {
+      console.error('No historyId returned');
+    }
 
   } catch (err: any) {
-    console.error('Watch setup failed:', err.message);
+    console.error('Cursor initialization failed:', err.message);
   }
 }
 
