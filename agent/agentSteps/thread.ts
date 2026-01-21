@@ -6,7 +6,7 @@ import { AgentContext } from '../agentContext';
 import { retry } from '../retryPolicy';
 import { getCpPoints } from '../../lib/cpPoints';
 import { validateThreadSummary, ThreadSummary } from '../../lib/ai/schemas';
-import { proposeActions } from '../../lib/actionEngine';
+import { proposeActions } from '../../lib/actions/proposeActions';
 
 async function updateThreadSummary(
   supabase: any,
