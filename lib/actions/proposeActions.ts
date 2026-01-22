@@ -1,6 +1,6 @@
 // lib/actions/proposeActions.ts
 
-import { extractFacts } from '../actionEngine/extractFacts';
+import { computeFollowUpClocks as extractFacts } from '../actionEngine/extractFacts';
 import { scoreAction, ActionScoreBreakdown, ExtractedFacts } from './scoreAction';
 import { supabase } from '../supabase';
 

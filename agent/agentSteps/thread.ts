@@ -87,7 +87,8 @@ async function updateThreadSummary(
     // Fetch CP POINTs for all participants
     let personalContext = '';
     if (participants && participants.length > 0) {
-      const allPoints = [];
+      const allPoints: string[] = [];
+
       for (const participant of participants) {
         const points = await getCpPoints(supabase, participant.cp_id);
         if (points.length > 0) {
@@ -275,6 +276,13 @@ export async function threadEmail(
 
   await updateThreadSummary(ctx.supabase, conversationId, ctx.clientId, ctx.apiKey);
 
-await proposeActions(conversationId);
+  await proposeActions([{
+    conversation_id: conversationId,
+    action_type: classification?.type === 'EVENT' ? 'schedule_meeting' : 'follow_up',
+    subject_inputs: { topic: emailData?.subject || '' },
+    body_inputs: { recipient_name: emailData?.from || '', topic: emailData?.subject || '' },
+    rationale: 'Automated proposal based on incoming email classification.'
+  }]);
+
   return conversationId;
 }

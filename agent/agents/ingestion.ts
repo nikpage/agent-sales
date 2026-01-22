@@ -47,7 +47,7 @@ export async function runIngestion(ctx: AgentContext): Promise<{
 
   // First run: seed with messages.list
   if (!currentHistoryId) {
-    const resList = await withRetry(
+    const resList: any = await withRetry(
       () => ctx.gmail.users.messages.list({
         userId: 'me',
         labelIds: ['INBOX'],
@@ -66,7 +66,7 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     let maxHistoryItemId = 0;
 
     do {
-      const historyRes = await withRetry(
+      const historyRes: any = await withRetry(
         () => ctx.gmail.users.history.list({
           userId: 'me',
           startHistoryId: currentHistoryId,
@@ -109,7 +109,7 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     if (!emailData) continue;
 
     // Fetch full message to check labels
-    const fullMsg = await withRetry(
+    const fullMsg: any = await withRetry(
       () => ctx.gmail.users.messages.get({
         userId: 'me',
         id: messageId,
