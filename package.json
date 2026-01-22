@@ -13,17 +13,19 @@
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "@supabase/supabase-js": "^2.86.2",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.91.0",
     "dotenv": "^17.2.3",
     "googleapis": "^167.0.0",
     "jsdom": "^22.1.0",
     "next": "^16.0.7",
-    "nodemailer": "^7.0.11",
+    "nodemailer": "^7.0.12",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@types/nodemailer": "^7.0.5",
     "@types/react": "19.2.7",
     "tsx": "^4.21.0",
     "typescript": "5.9.3"
