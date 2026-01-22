@@ -4,19 +4,30 @@ import { extractFacts } from '../actionEngine/extractFacts';
 import { scoreAction, ActionScoreBreakdown, ExtractedFacts } from './scoreAction';
 import { supabase } from '../supabase';
 
-export interface ProposedAction {
-  outcome_key: string;
-  facts: ExtractedFacts;
+export interface EmailPayload {
+  subject_inputs: Record<string, any>;
+  body_inputs: Record<string, any>;
+}
 
+export interface ProposedAction {
+  action_id: string;
+  action_type: string;
+  conversation_id: string;
   priority_score: number;
   impact_score: number;
   personal_score: number;
   urgency_score: number;
   immovability_bonus: number;
+  context_payload: EmailPayload;
+  rationale: string;
 }
 
 type ActionInput = {
-  outcome_key: string;
+  conversation_id: string;
+  action_type: string;
+  subject_inputs: Record<string, any>;
+  body_inputs: Record<string, any>;
+  rationale: string;
   [k: string]: any;
 };
 
@@ -30,64 +41,98 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
   // 1) Extract facts (async)
   const withFacts = await Promise.all(
     inputs.map(async (input) => {
-      const outcome_key = asNonEmptyString(input?.outcome_key);
-      if (!outcome_key) return null;
+      const conversation_id = asNonEmptyString(input?.conversation_id);
+      const action_type = asNonEmptyString(input?.action_type);
+      if (!conversation_id || !action_type) return null;
 
       const facts = await extractFacts(input);
-      return { outcome_key, facts };
+      return {
+        conversation_id,
+        action_type,
+        subject_inputs: input.subject_inputs || {},
+        body_inputs: input.body_inputs || {},
+        rationale: input.rationale || '',
+        facts
+      };
     })
   );
 
-  const valid = withFacts.filter(
-    (x): x is { outcome_key: string; facts: ExtractedFacts } => !!x
-  );
+  const valid = withFacts.filter((x): x is NonNullable<typeof x> => !!x);
 
   // 2) Score actions (pure, deterministic)
-  const scored: ProposedAction[] = valid.map(({ outcome_key, facts }) => {
+  const scored: ProposedAction[] = valid.map(({ conversation_id, action_type, subject_inputs, body_inputs, rationale, facts }) => {
     const score: ActionScoreBreakdown = scoreAction(facts);
     return {
-      outcome_key,
-      facts,
+      action_id: '', // Will be set by DB
+      conversation_id,
+      action_type,
       priority_score: score.priority_score,
       impact_score: score.impact_score,
       personal_score: score.personal_score,
       urgency_score: score.urgency_score,
       immovability_bonus: score.immovability_bonus,
+      context_payload: {
+        subject_inputs,
+        body_inputs
+      },
+      rationale
     };
   });
 
-  // 3) Dedupe by outcome_key
-  const byOutcome = new Map<string, ProposedAction>();
+  // 3) Dedupe by conversation_id + action_type
+  const byKey = new Map<string, ProposedAction>();
   for (const item of scored) {
-    const existing = byOutcome.get(item.outcome_key);
+    const key = `${item.conversation_id}:${item.action_type}`;
+    const existing = byKey.get(key);
     if (!existing || item.priority_score > existing.priority_score) {
-      byOutcome.set(item.outcome_key, item);
+      byKey.set(key, item);
     }
   }
-  const deduped = Array.from(byOutcome.values());
+  const deduped = Array.from(byKey.values());
 
-  // 4) Persist with UPSERT to avoid outcome_key collisions
+  // 4) Persist with UPSERT
   if (deduped.length) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('action_proposals')
       .upsert(
         deduped.map((a) => ({
-          outcome_key: a.outcome_key,
-          facts: a.facts,
+          conversation_id: a.conversation_id,
+          action_type: a.action_type,
+          payload: a.context_payload,
           priority_score: a.priority_score,
           impact_score: a.impact_score,
           personal_score: a.personal_score,
           urgency_score: a.urgency_score,
-          immovability_bonus: a.immovability_bonus,
+          rationale: a.rationale,
         })),
-        { onConflict: 'outcome_key' }
-      );
+        { onConflict: 'conversation_id,action_type' }
+      )
+      .select('id, conversation_id, action_type, payload, priority_score, impact_score, personal_score, urgency_score, rationale');
 
     if (error) throw error;
+
+    // Map returned IDs back
+    if (data) {
+      const mapped = data.map(row => {
+        const original = deduped.find(d => d.conversation_id === row.conversation_id && d.action_type === row.action_type);
+        return {
+          action_id: row.id,
+          conversation_id: row.conversation_id,
+          action_type: row.action_type,
+          priority_score: row.priority_score,
+          impact_score: row.impact_score,
+          personal_score: row.personal_score,
+          urgency_score: row.urgency_score,
+          immovability_bonus: original?.immovability_bonus || 0,
+          context_payload: row.payload as EmailPayload,
+          rationale: row.rationale
+        };
+      });
+
+      mapped.sort((a, b) => b.priority_score - a.priority_score);
+      return mapped;
+    }
   }
 
-  // 5) Sort by priority_score (desc)
-  deduped.sort((a, b) => b.priority_score - a.priority_score);
-
-  return deduped;
+  return [];
 }
