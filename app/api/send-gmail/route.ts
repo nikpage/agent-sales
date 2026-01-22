@@ -2,7 +2,7 @@
 
 import { google } from "googleapis";
 import { createClient } from "@supabase/supabase-js"; // Switch to standard client for service role
-import MailComposer from "nodemailer/lib/mail-composer";
+import { sendGmail } from "../../../lib/email/send-gmail";
 
 export async function POST(req: Request) {
   // 1. Initialize Supabase with Service Role Key to bypass Auth

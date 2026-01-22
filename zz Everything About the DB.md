@@ -2,28 +2,14 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "action_proposals",
-    "column_name": "personal_score",
-    "data_type": "numeric",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "action_proposals",
-    "column_name": "impact_score",
-    "data_type": "numeric",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "action_proposals",
-    "column_name": "rationale",
-    "data_type": "text",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "action_proposals",
     "column_name": "urgency_score",
+    "data_type": "numeric",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "action_proposals",
+    "column_name": "priority_score",
     "data_type": "numeric",
     "null?": "NO"
   },
@@ -37,22 +23,15 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "action_proposals",
-    "column_name": "id",
-    "data_type": "uuid",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "action_proposals",
-    "column_name": "priority_score",
-    "data_type": "numeric",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "action_proposals",
     "column_name": "payload",
     "data_type": "jsonb",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "action_proposals",
+    "column_name": "rationale",
+    "data_type": "text",
     "null?": "NO"
   },
   {
@@ -67,6 +46,55 @@
     "table_name": "action_proposals",
     "column_name": "conversation_id",
     "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "action_proposals",
+    "column_name": "personal_score",
+    "data_type": "numeric",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "action_proposals",
+    "column_name": "impact_score",
+    "data_type": "numeric",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "action_proposals",
+    "column_name": "id",
+    "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "agent_errors",
+    "column_name": "message_user",
+    "data_type": "text",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "agent_errors",
+    "column_name": "id",
+    "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "agent_errors",
+    "column_name": "error_id",
+    "data_type": "text",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "agent_errors",
+    "column_name": "message_internal",
+    "data_type": "text",
     "null?": "NO"
   },
   {
@@ -86,35 +114,21 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "agent_errors",
-    "column_name": "id",
-    "data_type": "uuid",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "agent_errors",
     "column_name": "user_id",
     "data_type": "uuid",
     "null?": "YES"
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "agent_errors",
-    "column_name": "error_id",
-    "data_type": "text",
+    "table_name": "channels",
+    "column_name": "user_id",
+    "data_type": "uuid",
     "null?": "NO"
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "agent_errors",
-    "column_name": "message_user",
-    "data_type": "text",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "agent_errors",
-    "column_name": "message_internal",
+    "table_name": "channels",
+    "column_name": "type",
     "data_type": "text",
     "null?": "NO"
   },
@@ -128,20 +142,6 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "channels",
-    "column_name": "created_at",
-    "data_type": "timestamp with time zone",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "channels",
-    "column_name": "user_id",
-    "data_type": "uuid",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "channels",
     "column_name": "id",
     "data_type": "uuid",
     "null?": "NO"
@@ -149,9 +149,72 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "channels",
-    "column_name": "type",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "conversation_threads",
+    "column_name": "topic",
     "data_type": "text",
     "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "conversation_threads",
+    "column_name": "state",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "conversation_threads",
+    "column_name": "summary_text",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "conversation_threads",
+    "column_name": "summary_confidence_reason",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "conversation_threads",
+    "column_name": "deal_type",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "conversation_threads",
+    "column_name": "id",
+    "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "conversation_threads",
+    "column_name": "user_id",
+    "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "conversation_threads",
+    "column_name": "last_updated",
+    "data_type": "timestamp with time zone",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "conversation_threads",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "null?": "YES"
   },
   {
     "section": "1: STRUCTURE",
@@ -191,78 +254,15 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "conversation_threads",
-    "column_name": "id",
-    "data_type": "uuid",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "conversation_threads",
-    "column_name": "user_id",
-    "data_type": "uuid",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "conversation_threads",
-    "column_name": "deal_type",
-    "data_type": "text",
+    "column_name": "summary_confidence",
+    "data_type": "numeric",
     "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "conversation_threads",
-    "column_name": "summary_text",
-    "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "conversation_threads",
-    "column_name": "state",
-    "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "conversation_threads",
-    "column_name": "last_updated",
-    "data_type": "timestamp with time zone",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "conversation_threads",
-    "column_name": "created_at",
-    "data_type": "timestamp with time zone",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "conversation_threads",
-    "column_name": "topic",
-    "data_type": "text",
-    "null?": "NO"
   },
   {
     "section": "1: STRUCTURE",
     "table_name": "cp_states",
     "column_name": "state",
     "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "cp_states",
-    "column_name": "summary_text",
-    "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "cp_states",
-    "column_name": "last_updated",
-    "data_type": "timestamp with time zone",
     "null?": "YES"
   },
   {
@@ -274,8 +274,15 @@
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "cps",
-    "column_name": "name",
+    "table_name": "cp_states",
+    "column_name": "last_updated",
+    "data_type": "timestamp with time zone",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "cp_states",
+    "column_name": "summary_text",
     "data_type": "text",
     "null?": "YES"
   },
@@ -289,36 +296,8 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "cps",
-    "column_name": "id",
-    "data_type": "uuid",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "cps",
-    "column_name": "is_blacklisted",
-    "data_type": "boolean",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "cps",
-    "column_name": "locations",
-    "data_type": "jsonb",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "cps",
     "column_name": "created_at",
     "data_type": "timestamp with time zone",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "cps",
-    "column_name": "user_id",
-    "data_type": "uuid",
     "null?": "NO"
   },
   {
@@ -330,79 +309,121 @@
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "events",
-    "column_name": "location",
+    "table_name": "cps",
+    "column_name": "name",
     "data_type": "text",
     "null?": "YES"
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "events",
+    "table_name": "cps",
+    "column_name": "locations",
+    "data_type": "jsonb",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "cps",
+    "column_name": "is_blacklisted",
+    "data_type": "boolean",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "cps",
+    "column_name": "id",
+    "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "cps",
     "column_name": "user_id",
     "data_type": "uuid",
     "null?": "NO"
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "events",
-    "column_name": "parent_event_id",
+    "table_name": "emails",
+    "column_name": "action_id",
     "data_type": "uuid",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "events",
-    "column_name": "cp_id",
-    "data_type": "uuid",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "events",
-    "column_name": "created_at",
-    "data_type": "timestamp with time zone",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "events",
-    "column_name": "end_time",
-    "data_type": "timestamp with time zone",
     "null?": "NO"
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "events",
-    "column_name": "title",
-    "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "events",
-    "column_name": "start_time",
-    "data_type": "timestamp with time zone",
+    "table_name": "emails",
+    "column_name": "user_id",
+    "data_type": "uuid",
     "null?": "NO"
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "events",
+    "table_name": "emails",
+    "column_name": "last_retry_at",
+    "data_type": "timestamp without time zone",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "emails",
     "column_name": "status",
     "data_type": "text",
-    "null?": "YES"
+    "null?": "NO"
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "events",
-    "column_name": "event_type",
+    "table_name": "emails",
+    "column_name": "id",
+    "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "emails",
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "emails",
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "emails",
+    "column_name": "external_id",
     "data_type": "text",
     "null?": "YES"
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "events",
-    "column_name": "id",
-    "data_type": "uuid",
+    "table_name": "emails",
+    "column_name": "last_error",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "emails",
+    "column_name": "bounced",
+    "data_type": "boolean",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "emails",
+    "column_name": "sent_at",
+    "data_type": "timestamp without time zone",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "emails",
+    "column_name": "retry_count",
+    "data_type": "integer",
     "null?": "NO"
   },
   {
@@ -415,8 +436,85 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "events",
+    "column_name": "location",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
+    "column_name": "id",
+    "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
+    "column_name": "user_id",
+    "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
+    "column_name": "cp_id",
+    "data_type": "uuid",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
+    "column_name": "start_time",
+    "data_type": "timestamp with time zone",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
+    "column_name": "end_time",
+    "data_type": "timestamp with time zone",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
     "column_name": "pre_block_group_id",
     "data_type": "uuid",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
+    "column_name": "parent_event_id",
+    "data_type": "uuid",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
+    "column_name": "status",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
+    "column_name": "title",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "events",
+    "column_name": "event_type",
+    "data_type": "text",
     "null?": "YES"
   },
   {
@@ -436,43 +534,8 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "messages",
-    "column_name": "cleaned_text",
+    "column_name": "universal_message_id",
     "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "messages",
-    "column_name": "id",
-    "data_type": "uuid",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "messages",
-    "column_name": "user_id",
-    "data_type": "uuid",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "messages",
-    "column_name": "cp_id",
-    "data_type": "uuid",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "messages",
-    "column_name": "channel_id",
-    "data_type": "uuid",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "messages",
-    "column_name": "timestamp",
-    "data_type": "timestamp with time zone",
     "null?": "NO"
   },
   {
@@ -492,42 +555,7 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "messages",
-    "column_name": "conversation_id",
-    "data_type": "uuid",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "messages",
-    "column_name": "direction",
-    "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "messages",
-    "column_name": "raw_text",
-    "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "messages",
-    "column_name": "tag_primary",
-    "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "messages",
     "column_name": "tag_secondary",
-    "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "messages",
-    "column_name": "external_id",
     "data_type": "text",
     "null?": "YES"
   },
@@ -541,8 +569,85 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "messages",
-    "column_name": "universal_message_id",
+    "column_name": "direction",
     "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "messages",
+    "column_name": "tag_primary",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "messages",
+    "column_name": "external_id",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "messages",
+    "column_name": "timestamp",
+    "data_type": "timestamp with time zone",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "messages",
+    "column_name": "channel_id",
+    "data_type": "uuid",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "messages",
+    "column_name": "cp_id",
+    "data_type": "uuid",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "messages",
+    "column_name": "user_id",
+    "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "messages",
+    "column_name": "id",
+    "data_type": "uuid",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "messages",
+    "column_name": "cleaned_text",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "messages",
+    "column_name": "conversation_id",
+    "data_type": "uuid",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "messages",
+    "column_name": "raw_text",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "thread_participants",
+    "column_name": "thread_id",
+    "data_type": "uuid",
     "null?": "NO"
   },
   {
@@ -561,27 +666,6 @@
   },
   {
     "section": "1: STRUCTURE",
-    "table_name": "thread_participants",
-    "column_name": "thread_id",
-    "data_type": "uuid",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "todos",
-    "column_name": "description",
-    "data_type": "text",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "todos",
-    "column_name": "status",
-    "data_type": "text",
-    "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
     "table_name": "todos",
     "column_name": "created_at",
     "data_type": "timestamp with time zone",
@@ -590,9 +674,9 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "todos",
-    "column_name": "cp_id",
+    "column_name": "id",
     "data_type": "uuid",
-    "null?": "YES"
+    "null?": "NO"
   },
   {
     "section": "1: STRUCTURE",
@@ -604,16 +688,9 @@
   {
     "section": "1: STRUCTURE",
     "table_name": "todos",
-    "column_name": "thread_id",
+    "column_name": "cp_id",
     "data_type": "uuid",
     "null?": "YES"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "todos",
-    "column_name": "id",
-    "data_type": "uuid",
-    "null?": "NO"
   },
   {
     "section": "1: STRUCTURE",
@@ -628,6 +705,62 @@
     "column_name": "scheduled_time",
     "data_type": "timestamp with time zone",
     "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "todos",
+    "column_name": "thread_id",
+    "data_type": "uuid",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "todos",
+    "column_name": "status",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "todos",
+    "column_name": "description",
+    "data_type": "text",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "users",
+    "column_name": "email",
+    "data_type": "text",
+    "null?": "YES"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "users",
+    "column_name": "email_timezone",
+    "data_type": "text",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "users",
+    "column_name": "email_unsubscribed",
+    "data_type": "boolean",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "users",
+    "column_name": "email_enabled",
+    "data_type": "boolean",
+    "null?": "NO"
+  },
+  {
+    "section": "1: STRUCTURE",
+    "table_name": "users",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "null?": "NO"
   },
   {
     "section": "1: STRUCTURE",
@@ -651,20 +784,6 @@
     "null?": "NO"
   },
   {
-    "section": "1: STRUCTURE",
-    "table_name": "users",
-    "column_name": "created_at",
-    "data_type": "timestamp with time zone",
-    "null?": "NO"
-  },
-  {
-    "section": "1: STRUCTURE",
-    "table_name": "users",
-    "column_name": "email",
-    "data_type": "text",
-    "null?": "YES"
-  },
-  {
     "section": "2: POLICIES",
     "table_name": "action_proposals",
     "column_name": "action_proposals_select_own",
@@ -674,16 +793,16 @@
   {
     "section": "2: POLICIES",
     "table_name": "channels",
-    "column_name": "Users can view own channels",
+    "column_name": "channels_isolation",
     "data_type": "ALL",
-    "null?": "(auth.uid() = user_id)"
+    "null?": "(user_id = auth.uid())"
   },
   {
     "section": "2: POLICIES",
     "table_name": "channels",
-    "column_name": "channels_isolation",
+    "column_name": "Users can view own channels",
     "data_type": "ALL",
-    "null?": "(user_id = auth.uid())"
+    "null?": "(auth.uid() = user_id)"
   },
   {
     "section": "2: POLICIES",
@@ -709,13 +828,6 @@
   {
     "section": "2: POLICIES",
     "table_name": "cps",
-    "column_name": "Users can view own cps",
-    "data_type": "ALL",
-    "null?": "(auth.uid() = user_id)"
-  },
-  {
-    "section": "2: POLICIES",
-    "table_name": "cps",
     "column_name": "Users own data",
     "data_type": "ALL",
     "null?": "(auth.uid() = user_id)"
@@ -729,8 +841,8 @@
   },
   {
     "section": "2: POLICIES",
-    "table_name": "events",
-    "column_name": "Users can view own events",
+    "table_name": "cps",
+    "column_name": "Users can view own cps",
     "data_type": "ALL",
     "null?": "(auth.uid() = user_id)"
   },
@@ -750,10 +862,10 @@
   },
   {
     "section": "2: POLICIES",
-    "table_name": "message_embeddings",
-    "column_name": "message_embeddings_isolation",
+    "table_name": "events",
+    "column_name": "Users can view own events",
     "data_type": "ALL",
-    "null?": "(message_id IN ( SELECT messages.id\n   FROM messages\n  WHERE (m"
+    "null?": "(auth.uid() = user_id)"
   },
   {
     "section": "2: POLICIES",
@@ -761,6 +873,13 @@
     "column_name": "Users can view own embeddings",
     "data_type": "ALL",
     "null?": "(EXISTS ( SELECT 1\n   FROM messages\n  WHERE ((messages.id = mes"
+  },
+  {
+    "section": "2: POLICIES",
+    "table_name": "message_embeddings",
+    "column_name": "message_embeddings_isolation",
+    "data_type": "ALL",
+    "null?": "(message_id IN ( SELECT messages.id\n   FROM messages\n  WHERE (m"
   },
   {
     "section": "2: POLICIES",
@@ -786,14 +905,14 @@
   {
     "section": "2: POLICIES",
     "table_name": "todos",
-    "column_name": "Users can view own todos",
+    "column_name": "Users own data",
     "data_type": "ALL",
     "null?": "(auth.uid() = user_id)"
   },
   {
     "section": "2: POLICIES",
     "table_name": "todos",
-    "column_name": "Users own data",
+    "column_name": "Users can view own todos",
     "data_type": "ALL",
     "null?": "(auth.uid() = user_id)"
   },
@@ -803,6 +922,13 @@
     "column_name": "todos_isolation",
     "data_type": "ALL",
     "null?": "(user_id = auth.uid())"
+  },
+  {
+    "section": "2: POLICIES",
+    "table_name": "users",
+    "column_name": "users_isolation",
+    "data_type": "ALL",
+    "null?": "(id = auth.uid())"
   },
   {
     "section": "2: POLICIES",
@@ -824,13 +950,6 @@
     "column_name": "Users can update own data",
     "data_type": "UPDATE",
     "null?": "(auth.uid() = id)"
-  },
-  {
-    "section": "2: POLICIES",
-    "table_name": "users",
-    "column_name": "users_isolation",
-    "data_type": "ALL",
-    "null?": "(id = auth.uid())"
   },
   {
     "section": "3: RELATIONS",
@@ -876,7 +995,14 @@
   },
   {
     "section": "3: RELATIONS",
-    "table_name": "events",
+    "table_name": "emails",
+    "column_name": "action_id",
+    "data_type": "action_proposals",
+    "null?": "id"
+  },
+  {
+    "section": "3: RELATIONS",
+    "table_name": "emails",
     "column_name": "user_id",
     "data_type": "users",
     "null?": "id"
@@ -886,6 +1012,13 @@
     "table_name": "events",
     "column_name": "cp_id",
     "data_type": "cps",
+    "null?": "id"
+  },
+  {
+    "section": "3: RELATIONS",
+    "table_name": "events",
+    "column_name": "user_id",
+    "data_type": "users",
     "null?": "id"
   },
   {
@@ -905,7 +1038,7 @@
   {
     "section": "3: RELATIONS",
     "table_name": "messages",
-    "column_name": "thread_id",
+    "column_name": "conversation_id",
     "data_type": "conversation_threads",
     "null?": "id"
   },
@@ -914,6 +1047,13 @@
     "table_name": "messages",
     "column_name": "user_id",
     "data_type": "users",
+    "null?": "id"
+  },
+  {
+    "section": "3: RELATIONS",
+    "table_name": "messages",
+    "column_name": "thread_id",
+    "data_type": "conversation_threads",
     "null?": "id"
   },
   {
@@ -925,13 +1065,6 @@
   },
   {
     "section": "3: RELATIONS",
-    "table_name": "messages",
-    "column_name": "conversation_id",
-    "data_type": "conversation_threads",
-    "null?": "id"
-  },
-  {
-    "section": "3: RELATIONS",
     "table_name": "thread_participants",
     "column_name": "thread_id",
     "data_type": "conversation_threads",
@@ -947,15 +1080,15 @@
   {
     "section": "3: RELATIONS",
     "table_name": "todos",
-    "column_name": "cp_id",
-    "data_type": "cps",
+    "column_name": "user_id",
+    "data_type": "users",
     "null?": "id"
   },
   {
     "section": "3: RELATIONS",
     "table_name": "todos",
-    "column_name": "user_id",
-    "data_type": "users",
+    "column_name": "cp_id",
+    "data_type": "cps",
     "null?": "id"
   }
 ]
