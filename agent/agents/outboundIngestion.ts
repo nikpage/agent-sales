@@ -43,7 +43,7 @@ export async function runOutboundIngestion(ctx: AgentContext): Promise<number> {
     'gmail.list'
   );
 
-  const messages = resList.data.messages ?? [];
+  const messages = (resList as any).data.messages ?? [];
 
   for (const msgStub of messages) {
     try {

@@ -28,7 +28,7 @@ export async function runIngestIfNeeded(
 
     await renewIfExpiring(ctx.supabase, ctx.client.id, tokens, settings);
 
-    const result = await runIngestion(ctx);
+    const result = await runIngestion(ctx!);
 
     if (result.newHistoryId) {
       const currentHistoryId = settings.gmail_watch_history_id;

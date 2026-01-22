@@ -57,8 +57,8 @@ export async function runIngestion(ctx: AgentContext): Promise<{
       'gmail.list'
     );
 
-    messageIds = (resList.data.messages ?? []).map(m => m.id!);
-    newHistoryId = resList.data.historyId || null;
+    messageIds = ((resList as any).data.messages ?? []).map(m => m.id!);
+    newHistoryId = (resList as any).data.historyId || null;
 
   } else {
     // Subsequent runs: use history.list with pagination
@@ -75,7 +75,7 @@ export async function runIngestion(ctx: AgentContext): Promise<{
         'gmail.history.list'
       );
 
-      const history = historyRes.data.history ?? [];
+      const history = (historyRes as any).data.history ?? [];
 
       // Extract message IDs and track max historyItem.id
       for (const historyItem of history) {
@@ -97,7 +97,7 @@ export async function runIngestion(ctx: AgentContext): Promise<{
         }
       }
 
-      pageToken = historyRes.data.nextPageToken;
+      pageToken = (historyRes as any).data.nextPageToken;
     } while (pageToken);
 
     newHistoryId = maxHistoryItemId > 0 ? maxHistoryItemId.toString() : null;
@@ -118,7 +118,7 @@ export async function runIngestion(ctx: AgentContext): Promise<{
       'gmail.get'
     );
 
-    const labels = fullMsg.data.labelIds ?? [];
+    const labels = (fullMsg as any).data.labelIds ?? [];
 
     // Filter: must be INBOX and UNREAD
     if (!labels.includes('INBOX') || !labels.includes('UNREAD')) {

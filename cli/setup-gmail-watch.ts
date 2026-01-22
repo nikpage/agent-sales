@@ -33,8 +33,8 @@ async function setupWatch(userId: string) {
       maxResults: 1
     });
 
-    if (response.data.historyId) {
-      console.log('Initial historyId obtained:', response.data.historyId);
+    if ((response.data as any).historyId) {
+      console.log('Initial historyId obtained:', (response.data as any).historyId);
 
       // Save initial cursor for polling
       await supabase
@@ -42,7 +42,7 @@ async function setupWatch(userId: string) {
         .update({
           settings: {
             ...user.settings,
-            gmail_watch_history_id: response.data.historyId
+            gmail_watch_history_id: (response.data as any).historyId
           }
         })
         .eq('id', userId);

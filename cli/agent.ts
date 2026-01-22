@@ -53,7 +53,7 @@ async function runCommand(clientId?: string, bulkMode: boolean = false) {
 async function runOutboundCommand(clientId: string, bulkMode: boolean = false) {
   console.log(`DEBUG: runOutboundCommand called with bulkMode=${bulkMode}`);
   const ctx = await createAgentContext(clientId, bulkMode);
-  const count = await runOutboundIngestion(ctx);
+  const count = await runOutboundIngestion(ctx!);
   console.log(`✓ Client ${clientId}: ${count} outbound messages processed`);
 }
 

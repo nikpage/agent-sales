@@ -87,7 +87,7 @@ async function updateThreadSummary(
     // Fetch CP POINTs for all participants
     let personalContext = '';
     if (participants && participants.length > 0) {
-      const allPoints: string[] = [];
+      const allPoints: any[] = [];
 
       for (const participant of participants) {
         const points = await getCpPoints(supabase, participant.cp_id);

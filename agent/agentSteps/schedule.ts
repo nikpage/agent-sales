@@ -8,7 +8,7 @@ const addHours = (date: Date, h: number) => new Date(date.getTime() + h * 60 * 6
 const addDays = (date: Date, d: number) => new Date(date.getTime() + d * 24 * 60 * 60 * 1000);
 
 async function findFreeSlots(calendar: any, startSearch: Date, durationMins: number, count = 3) {
-  const slots: Array<{ start: string; end: string }> = [];
+  const slots:  { start: string; end: string }[] = [];
   let candidate = new Date(startSearch);
 
   const endSearch = addDays(candidate, 3);
