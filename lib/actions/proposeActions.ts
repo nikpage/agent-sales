@@ -45,7 +45,7 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
       const action_type = asNonEmptyString(input?.action_type);
       if (!conversation_id || !action_type) return null;
 
-      const facts = await extractFacts(input);
+      const facts = await extractFacts([input]);
       return {
         conversation_id,
         action_type,
