@@ -4,17 +4,16 @@ import { supabase } from '../supabase';
 import { google } from 'googleapis';
 
 // Validate required environment variables
-const requiredEnvVars = ['GMAIL_USER', 'GMAIL_REFRESH_TOKEN', 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'];
+const requiredEnvVars = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'];
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
     throw new Error(`Missing required environment variable: ${envVar}`);
   }
 }
 
-const GMAIL_USER = process.env.GMAIL_USER!;
-const GMAIL_REFRESH_TOKEN = process.env.GMAIL_REFRESH_TOKEN!;
-const GMAIL_CLIENT_ID = process.env.GMAIL_CLIENT_ID!;
-const GMAIL_CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET!;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI!;
 
 const MAX_RETRIES = 3;
 const GMAIL_SEND_DELAY_MS = 1000;
@@ -106,7 +105,7 @@ export async function sendGmail(params: SendEmailParams): Promise<void> {
     // 4. Pre-send check: user email settings
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('email_unsubscribed, email_enabled')
+      .select('email_unsubscribed, email_enabled, settings')
       .eq('id', params.user_id)
       .single();
 
@@ -124,20 +123,37 @@ export async function sendGmail(params: SendEmailParams): Promise<void> {
       return;
     }
 
-    // 5. Send via Gmail API
+    // 5. Get user's Google tokens from settings
+    const googleTokens = user.settings?.google_tokens;
+    if (!googleTokens?.refresh_token || !googleTokens?.email) {
+      await supabase
+        .from('emails')
+        .update({
+          status: 'failed',
+          last_error: 'User has not connected Google account or email missing'
+        })
+        .eq('id', emailRecordId);
+      console.log(`Email sending aborted for user ${params.user_id}: no Google tokens or email`);
+      return;
+    }
+
+    // 6. Send via Gmail API
     const oauth2Client = new google.auth.OAuth2(
-      GMAIL_CLIENT_ID,
-      GMAIL_CLIENT_SECRET
+      GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET,
+      GOOGLE_REDIRECT_URI
     );
 
     oauth2Client.setCredentials({
-      refresh_token: GMAIL_REFRESH_TOKEN
+      refresh_token: googleTokens.refresh_token,
+      access_token: googleTokens.access_token,
+      expiry_date: googleTokens.expiry_date
     });
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
     const rawMessage = createRawMessage(
-      GMAIL_USER,
+      googleTokens.email,
       params.to,
       params.subject,
       params.text_body,
@@ -151,13 +167,14 @@ export async function sendGmail(params: SendEmailParams): Promise<void> {
       }
     });
 
-    // 6. Success: Update to sent
+    // 7. Success: Update to sent
     const { error: updateError } = await supabase
       .from('emails')
       .update({
         status: 'sent',
         sent_at: new Date().toISOString(),
-        message_id: sendResult.data.id
+        message_id: sendResult.data.id,
+        thread_id: sendResult.data.threadId
       })
       .eq('id', emailRecordId);
 
@@ -166,7 +183,7 @@ export async function sendGmail(params: SendEmailParams): Promise<void> {
     console.log(`Email sent successfully: ${sendResult.data.id}`);
 
   } catch (error: any) {
-    // 7. Failure: Update retry count and error
+    // 8. Failure: Update retry count and error
     if (!emailRecordId) {
       console.error(`Email send failed for action_id ${params.action_id} (no record ID):`, error.message);
       return;
@@ -209,6 +226,7 @@ function createRawMessage(
   const message = [
     `From: ${from}`,
     `To: ${to}`,
+    `Reply-To: ${from}`,
     `Subject: ${subject}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
