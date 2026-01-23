@@ -45,7 +45,7 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
       const action_type = asNonEmptyString(input?.action_type);
       if (!conversation_id || !action_type) return null;
 
-      const facts = await extractFacts([input] as any);
+      const facts = await extractFacts(input);
       return {
         conversation_id,
         action_type,
@@ -61,7 +61,7 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
 
   // 2) Score actions (pure, deterministic)
   const scored: ProposedAction[] = valid.map(({ conversation_id, action_type, subject_inputs, body_inputs, rationale, facts }) => {
-    const score: ActionScoreBreakdown = scoreAction(facts as any);
+    const score: ActionScoreBreakdown = scoreAction(facts);
     return {
       action_id: '', // Will be set by DB
       conversation_id,
