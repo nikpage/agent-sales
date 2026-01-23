@@ -28,6 +28,8 @@ type ActionInput = {
   subject_inputs: Record<string, any>;
   body_inputs: Record<string, any>;
   rationale: string;
+  occurred_at: string;
+  direction: string;
   [k: string]: any;
 };
 
@@ -45,7 +47,10 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
       const action_type = asNonEmptyString(input?.action_type);
       if (!conversation_id || !action_type) return null;
 
-      const facts = await extractFacts([input]);
+      const facts = await extractFacts([{
+        occurred_at: input.occurred_at,
+        direction: input.direction.toUpperCase() as 'INBOUND' | 'OUTBOUND'
+      }]);
       return {
         conversation_id,
         action_type,

@@ -31,7 +31,7 @@ async function updateThreadSummary(
     // Fetch messages for this thread
     const { data: messages } = await supabase
       .from('messages')
-      .select('cleaned_text, timestamp, occurred_at, cp_id')
+      .select('cleaned_text, timestamp, occurred_at, cp_id, direction')
       .eq('conversation_id', threadId)
       .order('occurred_at', { ascending: false });
 
@@ -276,12 +276,21 @@ export async function threadEmail(
 
   await updateThreadSummary(ctx.supabase, conversationId, ctx.clientId, ctx.apiKey);
 
+  // Get message data for proposeActions
+  const { data: messageData } = await ctx.supabase
+    .from('messages')
+    .select('occurred_at, direction')
+    .eq('id', messageId)
+    .single();
+
   await proposeActions([{
     conversation_id: conversationId,
     action_type: classification?.type === 'EVENT' ? 'schedule_meeting' : 'follow_up',
     subject_inputs: { topic: emailData?.subject || '' },
     body_inputs: { recipient_name: emailData?.from || '', topic: emailData?.subject || '' },
-    rationale: 'Automated proposal based on incoming email classification.'
+    rationale: 'Automated proposal based on incoming email classification.',
+    occurred_at: messageData?.occurred_at || new Date().toISOString(),
+    direction: messageData?.direction || 'inbound'
   }]);
 
   return conversationId;
