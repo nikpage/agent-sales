@@ -148,14 +148,23 @@ export async function runIngestion(ctx: AgentContext): Promise<{
   }
 
   // Process all collected message IDs
+  console.log(`DEBUG: Found ${messageIds.length} message IDs to process`);
+
   for (const messageId of messageIds) {
+    console.log('DEBUG: ===== Processing message', messageId, '=====');
+
     const emailData = await ingestEmail(ctx, { id: messageId });
-    if (!emailData) continue;
+    if (!emailData) {
+      console.log('DEBUG: ingestEmail returned null, skipping');
+      continue;
+    }
+    console.log('DEBUG: Got emailData from:', emailData.from, 'subject:', emailData.subject);
 
     // CHECK FOR COMMAND FIRST - if it's a command, skip all normal processing
+    console.log('DEBUG: Checking if email is a command...');
     const wasCommand = await checkForCommand(ctx, emailData);
     if (wasCommand) {
-      console.log('Email was a command, marking as read and skipping normal ingestion');
+      console.log('DEBUG: Email was a command, marking as read and skipping normal ingestion');
       try {
         await withRetry(
           () => ctx.gmail.users.messages.modify({
@@ -170,8 +179,10 @@ export async function runIngestion(ctx: AgentContext): Promise<{
       }
       continue; // Skip to next message
     }
+    console.log('DEBUG: Not a command, continuing normal processing');
 
     // Fetch full message to check labels
+    console.log('DEBUG: Fetching message labels...');
     const fullMsg: any = await withRetry(
       () => ctx.gmail.users.messages.get({
         userId: 'me',
@@ -182,19 +193,30 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     );
 
     const labels = (fullMsg as any).data.labelIds ?? [];
+    console.log('DEBUG: Message labels:', labels);
 
     // Filter: must be INBOX and UNREAD
     if (!labels.includes('INBOX') || !labels.includes('UNREAD')) {
+      console.log('DEBUG: Message missing INBOX or UNREAD label, skipping');
+      continue;
+    }
+    console.log('DEBUG: Labels OK (INBOX + UNREAD)');
+
+    // AI whitelist check
+    console.log('DEBUG: Running AI whitelist check...');
+    const isAllowed = await checkWhitelist(ctx, emailData);
+    console.log('DEBUG: Whitelist result:', isAllowed);
+    if (!isAllowed) {
+      console.log('DEBUG: Whitelist blocked this message, skipping');
       continue;
     }
 
-    // AI whitelist check
-    const isAllowed = await checkWhitelist(ctx, emailData);
-    if (!isAllowed) continue;
-
+    console.log('DEBUG: Resolving CP from:', emailData.from);
     const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from, emailData.cleanedText);
+    console.log('DEBUG: CP resolved to:', cpId);
 
     // Check if CP is blacklisted
+    console.log('DEBUG: Checking if CP is blacklisted...');
     const { data: cpData, error: cpError } = await ctx.supabase
       .from('cps')
       .select('is_blacklisted')
@@ -202,12 +224,13 @@ export async function runIngestion(ctx: AgentContext): Promise<{
       .single();
 
     if (cpError) {
-      console.error('Failed to check blacklist status:', cpError);
+      console.error('DEBUG: Failed to check blacklist status:', cpError);
       continue;
     }
 
+    console.log('DEBUG: CP blacklist status:', cpData?.is_blacklisted);
     if (cpData?.is_blacklisted) {
-      // Mark as read and skip
+      console.log('DEBUG: CP is blacklisted, marking as read and skipping');
       try {
         await withRetry(
           () => ctx.gmail.users.messages.modify({
@@ -224,43 +247,64 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     }
 
     // Store message FIRST (dedupe happens here)
+    console.log('DEBUG: Storing message in DB...');
     const storeResult = await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData);
+    console.log('DEBUG: storeMessage result - isDuplicate:', storeResult.isDuplicate, 'msgId:', storeResult.id);
 
     // If duplicate, skip all further processing
     if (storeResult.isDuplicate) {
       duplicateCount++;
+      console.log('DEBUG: Message is duplicate, skipping further processing');
       continue;
     }
 
     const msgId = storeResult.id;
 
     // Generate embedding
+    console.log('DEBUG: Generating embedding...');
     let embedding;
     try {
       embedding = await generateEmbedding(emailData.cleanedText || '');
+      console.log('DEBUG: Embedding generated, length:', embedding?.length);
     } catch (error) {
-      console.error('Failed to generate embedding, skipping message:', error);
+      console.error('DEBUG: Failed to generate embedding:', error);
       continue;
     }
 
     if (!embedding) {
-      console.error('Embedding is null, skipping message');
+      console.error('DEBUG: Embedding is null, skipping message');
       continue;
     }
 
     // Store embedding
+    console.log('DEBUG: Storing embedding...');
     await storeEmbedding(ctx.supabase, msgId, embedding);
+    console.log('DEBUG: Embedding stored');
 
     // Find or create conversation
+    console.log('DEBUG: Finding or creating conversation...');
     const conversationId = await findOrCreateConversation(ctx.supabase, ctx.client.id, cpId, embedding);
+    console.log('DEBUG: Conversation ID:', conversationId);
 
     // Attach conversation to message
+    console.log('DEBUG: Attaching message to conversation...');
     await attachMessageToConversation(ctx.supabase, msgId, conversationId);
+    console.log('DEBUG: Message attached to conversation');
 
-    await threadEmail(ctx, cpId, emailData.cleanedText || '', msgId, { importance: 'REGULAR' }, emailData, conversationId);
+    console.log('DEBUG: Running threadEmail...');
+    try {
+      await threadEmail(ctx, cpId, emailData.cleanedText || '', msgId, { importance: 'REGULAR' }, emailData, conversationId);
+      console.log('DEBUG: threadEmail complete');
+    } catch (error) {
+      console.error('DEBUG: threadEmail FAILED:', error);
+      console.error('DEBUG: Error details:', error instanceof Error ? error.message : String(error));
+      // Continue anyway - don't let threadEmail failure stop processing
+    }
 
     processedMessages++;
+    console.log('DEBUG: Incrementing processedMessages to:', processedMessages);
 
+    console.log('DEBUG: Marking message as read...');
     try {
       await withRetry(
         () => ctx.gmail.users.messages.modify({
@@ -270,9 +314,12 @@ export async function runIngestion(ctx: AgentContext): Promise<{
         }),
         'gmail.modify'
       );
+      console.log('DEBUG: Message marked as read');
     } catch (error) {
       console.error('Failed to modify message labels:', error);
     }
+
+    console.log('DEBUG: ===== Message processing complete =====');
   }
 
   console.info('ingest_end', {
