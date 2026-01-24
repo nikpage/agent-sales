@@ -1,62 +1,137 @@
 // lib/email/templates/byAction.ts
 
-import { EmailPayload } from '../../actions/proposeActions';
-
-export interface ActionTemplate {
-  subject: (payload: EmailPayload) => string;
-  actionSection: (payload: EmailPayload) => string;
+interface ActionContext {
+  action_type: string;
+  rationale: string;
+  payload: {
+    history_summary?: string[];
+    current_issue?: string;
+    contact_name?: string;
+    [key: string]: unknown;
+  };
 }
 
-export const actionTemplates: Record<string, ActionTemplate> = {
+interface EmailContent {
+  historySummary: string;
+  currentIssue: string;
+  intent: string;
+  subject: string;
+  body: string;
+}
 
-  follow_up: {
-    subject: (payload) => {
-      return payload.subject_inputs.topic || 'Follow-up';
-    },
-    actionSection: (payload) => {
-      const { recipient_name, topic } = payload.body_inputs;
-      return `Following up on ${topic}${recipient_name ? ` with ${recipient_name}` : ''}.`;
-    }
-  },
+/**
+ * Generate email content based on action type
+ * Returns 5 distinct blocks: History Summary (3-7 bullets), Current Issue, Intent, Subject, Body
+ */
+export function generateEmailContent(context: ActionContext): EmailContent {
+  const { action_type, rationale, payload } = context;
+  const contactName = payload.contact_name || 'Contact';
 
-  schedule_meeting: {
-    subject: (payload) => {
-      return payload.subject_inputs.meeting_type || 'Meeting Request';
-    },
-    actionSection: (payload) => {
-      const { recipient_name, meeting_type, proposed_times } = payload.body_inputs;
-      return `Schedule ${meeting_type}${recipient_name ? ` with ${recipient_name}` : ''}${proposed_times ? `. Proposed times: ${proposed_times}` : ''}.`;
-    }
-  },
+  // Block 1: History Summary (3-7 bullets)
+  const historySummary = payload.history_summary
+    ? payload.history_summary.slice(0, 7).map((item, idx) => `${idx + 1}. ${item}`).join('\n')
+    : 'No previous conversation history available.';
 
-  send_document: {
-    subject: (payload) => {
-      return payload.subject_inputs.document_name || 'Document';
-    },
-    actionSection: (payload) => {
-      const { recipient_name, document_name } = payload.body_inputs;
-      return `Send ${document_name}${recipient_name ? ` to ${recipient_name}` : ''}.`;
-    }
-  },
+  // Block 2: Current Issue
+  const currentIssue = payload.current_issue || 'The contact has sent a message that requires attention.';
 
-  request_info: {
-    subject: (payload) => {
-      return payload.subject_inputs.info_type || 'Information Request';
-    },
-    actionSection: (payload) => {
-      const { recipient_name, info_type } = payload.body_inputs;
-      return `Request ${info_type}${recipient_name ? ` from ${recipient_name}` : ''}.`;
-    }
-  },
+  // Block 3: Intent (why we're suggesting this action)
+  const intent = rationale;
 
-  send_proposal: {
-    subject: (payload) => {
-      return payload.subject_inputs.proposal_title || 'Proposal';
-    },
-    actionSection: (payload) => {
-      const { recipient_name, proposal_title, deadline } = payload.body_inputs;
-      return `Send proposal: ${proposal_title}${recipient_name ? ` to ${recipient_name}` : ''}${deadline ? `. Deadline: ${deadline}` : ''}.`;
-    }
+  // Block 4: Subject
+  let subject: string;
+
+  // Block 5: Body
+  let body: string;
+
+  switch (action_type) {
+    case 'REPLY_NEEDED':
+      subject = `Re: Conversation with ${contactName}`;
+      body = `Hi,
+
+I noticed ${contactName} sent a message that needs your response.
+
+${currentIssue}
+
+Here's what I suggest:
+
+[Draft response will go here based on context]
+
+Best regards`;
+      break;
+
+    case 'FOLLOW_UP':
+      subject = `Follow up: ${contactName}`;
+      body = `Hi,
+
+It looks like we should follow up with ${contactName}.
+
+Context:
+${currentIssue}
+
+Suggested follow-up:
+[Draft follow-up message will go here]
+
+Best regards`;
+      break;
+
+    case 'MEETING_NEEDED':
+      subject = `Schedule meeting: ${contactName}`;
+      body = `Hi,
+
+Based on the conversation, it seems a meeting with ${contactName} would be helpful.
+
+Reason:
+${currentIssue}
+
+Suggested message:
+[Draft meeting invitation will go here]
+
+Best regards`;
+      break;
+
+    default:
+      subject = `Action needed: ${contactName}`;
+      body = `Hi,
+
+There's an action needed regarding ${contactName}.
+
+Details:
+${currentIssue}
+
+${rationale}
+
+Best regards`;
   }
 
-};
+  return {
+    historySummary,
+    currentIssue,
+    intent,
+    subject,
+    body,
+  };
+}
+
+/**
+ * Compose full email from content blocks
+ */
+export function composeFullEmail(content: EmailContent): { subject: string; body: string } {
+  const fullBody = `${content.body}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CONVERSATION HISTORY:
+${content.historySummary}
+
+CURRENT SITUATION:
+${content.currentIssue}
+
+WHY THIS MATTERS:
+${content.intent}`;
+
+  return {
+    subject: content.subject,
+    body: fullBody,
+  };
+}
