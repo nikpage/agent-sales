@@ -1,7 +1,8 @@
 // lib/email/send-gmail.ts
 
-import { supabase } from '../supabase';
+import { supabase as defaultSupabase } from '../supabase';
 import { google } from 'googleapis';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // Validate required environment variables
 const requiredEnvVars = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'];
@@ -36,7 +37,7 @@ interface EmailRecord {
   created_at: string;
 }
 
-export async function sendGmail(params: SendEmailParams): Promise<void> {
+export async function sendGmail(params: SendEmailParams, supabase: SupabaseClient = defaultSupabase): Promise<void> {
   let emailRecordId: string | null = null;
 
   try {
