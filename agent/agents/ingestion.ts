@@ -1,44 +1,52 @@
 // agent/agents/ingestion.ts
 
-import { createClient } from '@supabase/supabase-js';
+import type { AgentContext } from '../agentContext';
+import { withRetry } from '../retryPolicy';
+import { storeMessage } from '../../lib/ingestion';
+import { generateEmbedding, storeEmbedding } from '../../lib/embeddings';
+import { threadEmail } from '../agentSteps/thread';
+import { resolveCp } from '../../lib/cp';
+import { ingestEmail } from '../agentSteps/ingest';
+import { whitelistPrompt } from '../../lib/ai/prompts/whitelist';
+import { AI_MODELS, AI_CONFIG } from '../../lib/ai/config';
+import { generateText } from '../../lib/ai/google';
+import { findOrCreateConversation, attachMessageToConversation } from '../../lib/conversation';
 import { parseEmailCommand } from '../../lib/email/commandParser';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
-
-interface IncomingEmail {
-  from: string;
-  to: string;
-  subject: string;
-  body: string;
-  userId: string;
+async function checkWhitelist(ctx: AgentContext, emailData: any): Promise<boolean> {
+  const bodySnippet = (emailData.cleanedText || '').slice(0, AI_CONFIG.whitelist.bodyCharLimit);
+  const prompt = whitelistPrompt(emailData.from, emailData.subject || '', bodySnippet);
+  const model = ctx.bulkMode ? AI_MODELS.whitelistBulk : AI_MODELS.whitelist;
+  try {
+    const response = await generateText(prompt, {
+      model,
+      temperature: AI_CONFIG.whitelist.temperature,
+    });
+    return response.toUpperCase().includes('ALLOW');
+  } catch (error) {
+    console.error('Whitelist check failed:', error);
+    return true; // Default to allowing on error (false positive bias)
+  }
 }
 
 /**
- * Check if incoming email is a command reply
- * Call this BEFORE normal message processing
- * Returns true if command was processed, false otherwise
+ * Check if email is a command reply and execute it
+ * Returns true if it was a command (skip normal processing)
  */
-export async function checkForCommand(email: IncomingEmail): Promise<boolean> {
+async function checkForCommand(ctx: AgentContext, emailData: any): Promise<boolean> {
   // Only check emails FROM the user (not TO the user)
-  const { data: user } = await supabase
-    .from('users')
-    .select('email')
-    .eq('id', email.userId)
-    .single();
-
-  if (!user || email.from !== user.email) {
+  if (emailData.from !== ctx.client.email) {
     return false;
   }
 
   // Try to parse command
-  const parsed = parseEmailCommand(email.body);
+  const parsed = parseEmailCommand(emailData.cleanedText || emailData.rawText || '');
 
   if (!parsed.actionId || !parsed.command) {
     return false;
   }
+
+  console.log(`Command detected: ${parsed.command} for action ${parsed.actionId}`);
 
   // Command found - route to command API
   try {
@@ -46,8 +54,8 @@ export async function checkForCommand(email: IncomingEmail): Promise<boolean> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        senderEmail: email.from,
-        emailBody: email.body,
+        senderEmail: emailData.from,
+        emailBody: emailData.cleanedText || emailData.rawText || '',
       }),
     });
 
@@ -64,34 +72,215 @@ export async function checkForCommand(email: IncomingEmail): Promise<boolean> {
   }
 }
 
-/**
- * Main ingestion function
- * Add checkForCommand at the very beginning to intercept command emails
- */
-export async function processIncomingEmail(email: IncomingEmail): Promise<void> {
-  // FIRST: Check if this is a command - if true, terminate ingestion for this message
-  const wasCommand = await checkForCommand(email);
-  if (wasCommand) {
-    console.log('Email was a command, skipping normal ingestion');
-    return;
+export async function runIngestion(ctx: AgentContext): Promise<{
+  processedMessages: number;
+  newHistoryId: string | null;
+}> {
+  const model = ctx.bulkMode ? AI_MODELS.whitelistBulk : AI_MODELS.whitelist;
+  console.log(`Ingestion mode: ${ctx.bulkMode ? 'BULK' : 'NORMAL'}, using model: ${model}`);
+
+  let processedMessages = 0;
+  let duplicateCount = 0;
+  const settings = ctx.client.settings || {};
+  const currentHistoryId = settings.gmail_watch_history_id || null;
+
+  console.info('ingest_start', { clientId: ctx.client.id, cursor: currentHistoryId });
+
+  let newHistoryId: string | null = null;
+  let messageIds: string[] = [];
+
+  // First run: seed with messages.list
+  if (!currentHistoryId) {
+    const resList: any = await withRetry(
+      () => ctx.gmail.users.messages.list({
+        userId: 'me',
+        labelIds: ['INBOX'],
+        q: 'in:inbox is:unread',
+        maxResults: 50,
+      }),
+      'gmail.list'
+    );
+
+    messageIds = ((resList as any).data.messages ?? []).map(m => m.id!);
+    newHistoryId = (resList as any).data.historyId || null;
+
+  } else {
+    // Subsequent runs: use history.list with pagination
+    let pageToken: string | null | undefined = undefined;
+    let maxHistoryItemId = 0;
+
+    do {
+      const historyRes: any = await withRetry(
+        () => ctx.gmail.users.history.list({
+          userId: 'me',
+          startHistoryId: currentHistoryId,
+          pageToken: pageToken || undefined,
+        }),
+        'gmail.history.list'
+      );
+
+      const history = (historyRes as any).data.history ?? [];
+
+      // Extract message IDs and track max historyItem.id
+      for (const historyItem of history) {
+        // Track max history item ID
+        if (historyItem.id) {
+          const itemId = parseInt(historyItem.id);
+          if (itemId > maxHistoryItemId) {
+            maxHistoryItemId = itemId;
+          }
+        }
+
+        // Collect message IDs from messagesAdded
+        if (historyItem.messagesAdded) {
+          for (const added of historyItem.messagesAdded) {
+            if (added.message?.id) {
+              messageIds.push(added.message.id);
+            }
+          }
+        }
+      }
+
+      pageToken = (historyRes as any).data.nextPageToken;
+    } while (pageToken);
+
+    newHistoryId = maxHistoryItemId > 0 ? maxHistoryItemId.toString() : null;
   }
 
-  // Continue with normal message processing...
-  // [Your existing ingestion logic here]
-}
+  // Process all collected message IDs
+  for (const messageId of messageIds) {
+    const emailData = await ingestEmail(ctx, { id: messageId });
+    if (!emailData) continue;
 
-/**
- * Main ingestion runner called by agentRunner
- * Fetches and processes emails for a user
- */
-export async function runIngestion(context: any): Promise<void> {
-  const userId = context.clientId || context.client?.id;
-  console.log('Running ingestion for user:', userId);
+    // CHECK FOR COMMAND FIRST - if it's a command, skip all normal processing
+    const wasCommand = await checkForCommand(ctx, emailData);
+    if (wasCommand) {
+      console.log('Email was a command, marking as read and skipping normal ingestion');
+      try {
+        await withRetry(
+          () => ctx.gmail.users.messages.modify({
+            userId: 'me',
+            id: messageId,
+            requestBody: { removeLabelIds: ['UNREAD'] },
+          }),
+          'gmail.modify'
+        );
+      } catch (error) {
+        console.error('Failed to modify message labels:', error);
+      }
+      continue; // Skip to next message
+    }
 
-  // TODO: Implement actual email fetching logic
-  // Use context.gmail to fetch emails
-  // Use context.supabase for database operations
-  // For each email, check if it's a command before processing
+    // Fetch full message to check labels
+    const fullMsg: any = await withRetry(
+      () => ctx.gmail.users.messages.get({
+        userId: 'me',
+        id: messageId,
+        format: 'minimal',
+      }),
+      'gmail.get'
+    );
 
-  console.log('✓ Ingestion complete (stub - no actual processing yet)');
+    const labels = (fullMsg as any).data.labelIds ?? [];
+
+    // Filter: must be INBOX and UNREAD
+    if (!labels.includes('INBOX') || !labels.includes('UNREAD')) {
+      continue;
+    }
+
+    // AI whitelist check
+    const isAllowed = await checkWhitelist(ctx, emailData);
+    if (!isAllowed) continue;
+
+    const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from, emailData.cleanedText);
+
+    // Check if CP is blacklisted
+    const { data: cpData, error: cpError } = await ctx.supabase
+      .from('cps')
+      .select('is_blacklisted')
+      .eq('id', cpId)
+      .single();
+
+    if (cpError) {
+      console.error('Failed to check blacklist status:', cpError);
+      continue;
+    }
+
+    if (cpData?.is_blacklisted) {
+      // Mark as read and skip
+      try {
+        await withRetry(
+          () => ctx.gmail.users.messages.modify({
+            userId: 'me',
+            id: messageId,
+            requestBody: { removeLabelIds: ['UNREAD'] },
+          }),
+          'gmail.modify'
+        );
+      } catch (error) {
+        console.error('Failed to modify message labels:', error);
+      }
+      continue;
+    }
+
+    // Store message FIRST (dedupe happens here)
+    const storeResult = await storeMessage(ctx.supabase, ctx.client.id, cpId, emailData);
+
+    // If duplicate, skip all further processing
+    if (storeResult.isDuplicate) {
+      duplicateCount++;
+      continue;
+    }
+
+    const msgId = storeResult.id;
+
+    // Generate embedding
+    let embedding;
+    try {
+      embedding = await generateEmbedding(emailData.cleanedText || '');
+    } catch (error) {
+      console.error('Failed to generate embedding, skipping message:', error);
+      continue;
+    }
+
+    if (!embedding) {
+      console.error('Embedding is null, skipping message');
+      continue;
+    }
+
+    // Store embedding
+    await storeEmbedding(ctx.supabase, msgId, embedding);
+
+    // Find or create conversation
+    const conversationId = await findOrCreateConversation(ctx.supabase, ctx.client.id, cpId, embedding);
+
+    // Attach conversation to message
+    await attachMessageToConversation(ctx.supabase, msgId, conversationId);
+
+    await threadEmail(ctx, cpId, emailData.cleanedText || '', msgId, { importance: 'REGULAR' }, emailData, conversationId);
+
+    processedMessages++;
+
+    try {
+      await withRetry(
+        () => ctx.gmail.users.messages.modify({
+          userId: 'me',
+          id: messageId,
+          requestBody: { removeLabelIds: ['UNREAD'] },
+        }),
+        'gmail.modify'
+      );
+    } catch (error) {
+      console.error('Failed to modify message labels:', error);
+    }
+  }
+
+  console.info('ingest_end', {
+    clientId: ctx.client.id,
+    newCursor: newHistoryId,
+    inserted: processedMessages,
+    skipped: duplicateCount
+  });
+
+  return { processedMessages, newHistoryId };
 }
