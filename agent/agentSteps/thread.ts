@@ -244,10 +244,23 @@ export async function threadEmail(
   }
 
   // Add participant
-  await ctx.supabase.from('thread_participants').upsert(
-    { thread_id: conversationId, cp_id: cpId, added_at: new Date().toISOString() },
-    { onConflict: 'thread_id, cp_id' }
-  );
+  const participantRow = {
+    thread_id: conversationId,
+    cp_id: cpId,
+    added_at: new Date().toISOString(),
+  };
+
+  const insertRes = await ctx.supabase
+    .from("thread_participants")
+    .insert(participantRow);
+
+  if (insertRes.error) {
+    // ignore duplicates only
+    if (insertRes.error.code !== "23505") {
+      throw insertRes.error;
+    }
+  }
+
 
   // Update thread timestamp
   await ctx.supabase.from('conversation_threads')
@@ -290,8 +303,28 @@ export async function threadEmail(
     body_inputs: { recipient_name: emailData?.from || '', topic: emailData?.subject || '' },
     rationale: 'Automated proposal based on incoming email classification.',
     occurred_at: messageData?.occurred_at || new Date().toISOString(),
-    direction: messageData?.direction || 'inbound'
+    direction: messageData?.direction || 'inbound',
+    user_id: ctx.clientId,
+    recipient_email:
+  (messageData?.direction === 'outbound'
+    ? (emailData?.toEmail || extractEmailAddress(emailData?.to) || extractEmailAddress(emailData?.toRaw))
+    : (emailData?.fromEmail || extractEmailAddress(emailData?.from))) || undefined
   }]);
 
   return conversationId;
+}
+
+// Helper function to extract email address from "Name <email@address.com>" format
+function extractEmailAddress(emailHeader: string | undefined): string | undefined {
+  if (!emailHeader) return undefined;
+
+  // Match email in angle brackets: "Name <email@address.com>"
+  const bracketMatch = emailHeader.match(/<([^>]+)>/);
+  if (bracketMatch) return bracketMatch[1].trim();
+
+  // Match standalone email: "email@address.com"
+  const emailMatch = emailHeader.match(/[\w.-]+@[\w.-]+\.\w+/);
+  if (emailMatch) return emailMatch[0].trim();
+
+  return undefined;
 }
