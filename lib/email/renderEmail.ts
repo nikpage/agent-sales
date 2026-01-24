@@ -23,7 +23,6 @@ export function renderEmail(
   recipientEmail: string,
   unsubscribeLink: string
 ): RenderedEmail {
-
   validateEmail(recipientEmail);
 
   const template = templates[action.action_type];
@@ -34,12 +33,24 @@ export function renderEmail(
   const subject = template.subject(action.context_payload);
   const actionSection = template.actionSection(action.context_payload);
 
+  const appUrl = process.env.APP_URL || '';
+
   const slots: BaseTemplateSlots = {
     subject,
-    intro: `Hi,`,
+    intro: `Dobrý den,`,
     actionSections: [actionSection],
-    footer: `Best regards`,
-    unsubscribeLink
+    footer: `S pozdravem,\nMila`,
+    unsubscribeLink,
+    globalCtas: appUrl
+      ? [
+          { label: 'Email', url: `${appUrl}` },
+          { label: 'Účet', url: `${appUrl}/settings` }
+        ]
+      : [],
+    pixelUrl:
+      appUrl && (action as any)?.action_id
+        ? `${appUrl}/api/pixel/ingest?action_id=${encodeURIComponent((action as any).action_id)}`
+        : undefined
   };
 
   const text_body = renderTextEmail(slots);
