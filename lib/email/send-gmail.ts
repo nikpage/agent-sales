@@ -37,16 +37,15 @@ async function getGmailClient(userId: string) {
 }
 
 /**
- * Create encoded email message for Gmail API
- * Uses threadId field for threading, not In-Reply-To/References headers
+ * Create encoded email message for Gmail API - HTML only
  */
-function createEmailMessage(to: string, subject: string, body: string): string {
+function createEmailMessage(to: string, subject: string, htmlBody: string): string {
   const email = [
     `To: ${to}`,
     `Subject: ${subject}`,
-    'Content-Type: text/plain; charset=utf-8',
+    'Content-Type: text/html; charset=utf-8',
     '',
-    body,
+    htmlBody,
   ].join('\n');
 
   return Buffer.from(email).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -151,19 +150,22 @@ export async function sendNotificationToUser(
 }
 
 /**
- * Send email via Gmail (used by send-pending-emails route)
+ * Send email via Gmail - HTML only
  */
-export async function sendGmail(
-  userId: string,
-  to: string,
-  subject: string,
-  textBody: string,
-  htmlBody?: string
-): Promise<void> {
-  const { gmail } = await getGmailClient(userId);
+export async function sendGmail(params: {
+  action_id: string;
+  user_id: string;
+  to: string;
+  subject: string;
+  text_body: string;
+  html_body: string;
+}): Promise<void> {
+  const { user_id, subject, html_body } = params;
 
-  const body = htmlBody || textBody;
-  const emailMessage = createEmailMessage(to, subject, body);
+  const { gmail, userEmail } = await getGmailClient(user_id);
+
+  // Send HTML email to the user themselves
+  const emailMessage = createEmailMessage(userEmail, subject, html_body);
 
   await gmail.users.messages.send({
     userId: 'me',
@@ -171,4 +173,10 @@ export async function sendGmail(
       raw: emailMessage,
     },
   });
+
+  // Mark email as sent in database
+  await supabase
+    .from('emails')
+    .update({ status: 'sent' })
+    .eq('action_id', params.action_id);
 }

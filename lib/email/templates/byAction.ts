@@ -135,3 +135,68 @@ ${content.intent}`;
     body: fullBody,
   };
 }
+
+export interface ActionTemplate {
+  subject: (payload: any) => string;
+  actionSection: (payload: any) => string;
+}
+
+export const actionTemplates: Record<string, ActionTemplate> = {
+  follow_up: {
+    subject: (payload) => {
+      const recipient = payload.body_inputs?.recipient_name || 'Contact';
+      const topic = payload.subject_inputs?.topic || '';
+      return topic ? `Re: ${topic}` : `Follow up: ${recipient}`;
+    },
+    actionSection: (payload) => {
+      const recipient = payload.body_inputs?.recipient_name || 'Contact';
+      const topic = payload.body_inputs?.topic || payload.subject_inputs?.topic || '';
+
+      return `Ahoj,
+
+Je potřeba odpovědět na email od ${recipient}.
+
+Téma: ${topic}
+
+Co navrhujete odpovědět?`;
+    }
+  },
+
+  reply_needed: {
+    subject: (payload) => {
+      const topic = payload.subject_inputs?.topic || '';
+      return topic ? `Re: ${topic}` : 'Odpověď potřebná';
+    },
+    actionSection: (payload) => {
+      const recipient = payload.body_inputs?.recipient_name || 'Contact';
+      const topic = payload.body_inputs?.topic || payload.subject_inputs?.topic || '';
+
+      return `Ahoj,
+
+Přišla zpráva od ${recipient}, která vyžaduje odpověď.
+
+Téma: ${topic}
+
+Jak chcete reagovat?`;
+    }
+  },
+
+  meeting_needed: {
+    subject: (payload) => {
+      const recipient = payload.body_inputs?.recipient_name || 'Contact';
+      return `Schůzka: ${recipient}`;
+    },
+    actionSection: (payload) => {
+      const recipient = payload.body_inputs?.recipient_name || 'Contact';
+      const topic = payload.body_inputs?.topic || payload.subject_inputs?.topic || '';
+
+      return `Ahoj,
+
+Na základě konverzace s ${recipient} by bylo dobré domluvit schůzku.
+
+Téma: ${topic}
+
+Chcete naplánovat schůzku?`;
+    }
+  }
+};

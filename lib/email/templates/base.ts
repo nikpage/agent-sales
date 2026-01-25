@@ -1,17 +1,19 @@
 // lib/email/templates/base.ts
 
-interface EmailTemplate {
+export interface BaseTemplateSlots {
   subject: string;
-  textBody: string;
-  htmlBody: string;
+  intro: string;
+  actionSections: string[];
+  footer: string;
+  unsubscribeLink: string;
+  globalCtas: Array<{ label: string; url: string }>;
+  pixelUrl?: string;
 }
 
 /**
  * Universal command footer with verbatim commands: DO IT, EDIT: <notes>, I'LL DO IT, BLACKLIST CP
  */
-function getCommandFooter(actionId: string): string {
-  const appUrl = process.env.APP_URL || 'http://localhost:3000';
-
+function getCommandFooter(): string {
   return `
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -23,23 +25,50 @@ COMMANDS (reply with one of these on the first line):
 • BLACKLIST CP   → Block this contact forever
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Tracking: pixelUrl=${appUrl}/pixel?action_id=${actionId}
 `;
 }
 
 /**
- * Wrap content with standard email structure
+ * Render plain text email
  */
-export function wrapEmailTemplate(
-  content: string,
-  actionId: string,
-  includeCommands: boolean = true
-): EmailTemplate {
-  const appUrl = process.env.APP_URL || 'http://localhost:3000';
-  const textBody = includeCommands ? `${content}${getCommandFooter(actionId)}` : content;
+export function renderTextEmail(slots: BaseTemplateSlots): string {
+  const parts = [
+    slots.intro,
+    '',
+    ...slots.actionSections,
+    '',
+    slots.footer,
+    getCommandFooter(),
+  ];
 
-  const htmlBody = `
+  if (slots.unsubscribeLink) {
+    parts.push(``, `Unsubscribe: ${slots.unsubscribeLink}`);
+  }
+
+  if (slots.pixelUrl) {
+    parts.push(``, `Tracking: ${slots.pixelUrl}`);
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Render HTML email
+ */
+export function renderHtmlEmail(slots: BaseTemplateSlots): string {
+  const actionSectionsHtml = slots.actionSections
+    .map(section => `<div style="margin: 20px 0;">${section.replace(/\n/g, '<br>')}</div>`)
+    .join('');
+
+  const ctasHtml = slots.globalCtas.length
+    ? `<div style="margin: 20px 0;">
+        ${slots.globalCtas.map(cta =>
+          `<a href="${cta.url}" style="margin-right: 15px; color: #0066cc;">${cta.label}</a>`
+        ).join('')}
+      </div>`
+    : '';
+
+  return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -55,11 +84,11 @@ export function wrapEmailTemplate(
 </head>
 <body>
   <div class="content">
-    ${content.replace(/\n/g, '<br>')}
-    ${
-      includeCommands
-        ? `
+    <p>${slots.intro}</p>
+    ${actionSectionsHtml}
+    ${ctasHtml}
     <div class="footer">
+      <p>${slots.footer.replace(/\n/g, '<br>')}</p>
       <div class="commands">
         <strong>COMMANDS</strong> (reply with one on the first line):<br><br>
         <div class="command">• <strong>DO IT</strong> → I'll create a draft in your Gmail</div>
@@ -67,21 +96,12 @@ export function wrapEmailTemplate(
         <div class="command">• <strong>I'LL DO IT</strong> → You'll handle this yourself</div>
         <div class="command">• <strong>BLACKLIST CP</strong> → Block this contact forever</div>
       </div>
-      <div class="tracking">
-        Tracking: pixelUrl=${appUrl}/pixel?action_id=${actionId}
-      </div>
+      ${slots.unsubscribeLink ? `<p style="margin-top: 20px;"><a href="${slots.unsubscribeLink}">Unsubscribe</a></p>` : ''}
+      ${slots.pixelUrl ? `<div class="tracking">Tracking: ${slots.pixelUrl}</div>` : ''}
     </div>
-    `
-        : ''
-    }
   </div>
+  ${slots.pixelUrl ? `<img src="${slots.pixelUrl}" width="1" height="1" style="display:none;" />` : ''}
 </body>
 </html>
 `;
-
-  return {
-    subject: 'Action Required',
-    textBody,
-    htmlBody,
-  };
 }
