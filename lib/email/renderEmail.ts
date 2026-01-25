@@ -1,8 +1,6 @@
 // lib/email/renderEmail.ts
 
-import { ProposedAction } from '../actions/proposeActions';
-import { BaseTemplateSlots, renderTextEmail, renderHtmlEmail } from './templates/base';
-import { ActionTemplate } from './templates/byAction';
+import { renderTextEmail, renderHtmlEmail } from './templates/base';
 
 export interface RenderedEmail {
   subject: string;
@@ -10,32 +8,22 @@ export interface RenderedEmail {
   html_body: string;
 }
 
-function validateEmail(email: string): void {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    throw new Error(`Invalid email format: ${email}`);
-  }
-}
-
 export function renderEmail(
-  action: ProposedAction,
-  templates: Record<string, ActionTemplate>,
-  recipientEmail: string,
+  action: any,
+  templates: Record<string, any>,
   unsubscribeLink: string
 ): RenderedEmail {
-  validateEmail(recipientEmail);
-
   const template = templates[action.action_type];
   if (!template) {
     throw new Error(`No template found for action_type: ${action.action_type}`);
   }
 
-  const subject = template.subject(action.context_payload);
-  const actionSection = template.actionSection(action.context_payload);
+  const subject = template.subject(action.payload);
+  const actionSection = template.actionSection(action.payload);
 
   const appUrl = process.env.APP_URL || '';
 
-  const slots: BaseTemplateSlots = {
+  const slots = {
     subject,
     intro: `Dobrý den,`,
     actionSections: [actionSection],
@@ -48,8 +36,8 @@ export function renderEmail(
         ]
       : [],
     pixelUrl:
-      appUrl && (action as any)?.action_id
-        ? `${appUrl}/api/pixel/ingest?action_id=${encodeURIComponent((action as any).action_id)}`
+      appUrl && action.id
+        ? `${appUrl}/api/pixel/ingest?action_id=${encodeURIComponent(action.id)}`
         : undefined
   };
 

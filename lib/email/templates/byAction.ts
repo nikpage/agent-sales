@@ -151,14 +151,30 @@ export const actionTemplates: Record<string, ActionTemplate> = {
     actionSection: (payload) => {
       const recipient = payload.body_inputs?.recipient_name || 'Contact';
       const topic = payload.body_inputs?.topic || payload.subject_inputs?.topic || '';
+      const summary = payload.body_inputs?.conversation_summary || '';
+      const suggestedResponse = payload.body_inputs?.suggested_response || '';
 
-      return `Ahoj,
+      let content = `Ahoj,
 
 Je potřeba odpovědět na email od ${recipient}.
 
-Téma: ${topic}
+Téma: ${topic}`;
 
-Co navrhujete odpovědět?`;
+      if (summary) {
+        content += `
+
+KONTEXT KONVERZACE:
+${summary}`;
+      }
+
+      if (suggestedResponse) {
+        content += `
+
+NAVRHOVANÁ ODPOVĚĎ:
+${suggestedResponse}`;
+      }
+
+      return content;
     }
   },
 
@@ -170,14 +186,30 @@ Co navrhujete odpovědět?`;
     actionSection: (payload) => {
       const recipient = payload.body_inputs?.recipient_name || 'Contact';
       const topic = payload.body_inputs?.topic || payload.subject_inputs?.topic || '';
+      const summary = payload.body_inputs?.conversation_summary || '';
+      const suggestedResponse = payload.body_inputs?.suggested_response || '';
 
-      return `Ahoj,
+      let content = `Ahoj,
 
 Přišla zpráva od ${recipient}, která vyžaduje odpověď.
 
-Téma: ${topic}
+Téma: ${topic}`;
 
-Jak chcete reagovat?`;
+      if (summary) {
+        content += `
+
+KONTEXT KONVERZACE:
+${summary}`;
+      }
+
+      if (suggestedResponse) {
+        content += `
+
+NAVRHOVANÁ ODPOVĚĎ:
+${suggestedResponse}`;
+      }
+
+      return content;
     }
   },
 
@@ -189,14 +221,30 @@ Jak chcete reagovat?`;
     actionSection: (payload) => {
       const recipient = payload.body_inputs?.recipient_name || 'Contact';
       const topic = payload.body_inputs?.topic || payload.subject_inputs?.topic || '';
+      const summary = payload.body_inputs?.conversation_summary || '';
+      const suggestedResponse = payload.body_inputs?.suggested_response || '';
 
-      return `Ahoj,
+      let content = `Ahoj,
 
 Na základě konverzace s ${recipient} by bylo dobré domluvit schůzku.
 
-Téma: ${topic}
+Téma: ${topic}`;
 
-Chcete naplánovat schůzku?`;
+      if (summary) {
+        content += `
+
+KONTEXT KONVERZACE:
+${summary}`;
+      }
+
+      if (suggestedResponse) {
+        content += `
+
+NAVRHOVANÁ ODPOVĚĎ:
+${suggestedResponse}`;
+      }
+
+      return content;
     }
   }
 };

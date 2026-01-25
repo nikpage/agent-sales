@@ -2,7 +2,6 @@
 
 import { google } from 'googleapis';
 import { createClient } from '@supabase/supabase-js';
-import { renderHtmlEmail, BaseTemplateSlots } from './templates/base';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -60,7 +59,7 @@ export async function createOutboundDraftToCp(actionId: string): Promise<{ draft
   // Fetch proposal with all needed data
   const { data: proposal, error } = await supabase
     .from('action_proposals')
-    .select('id, user_id, cp_id, status, draft_subject, draft_body_text, conversation_id')
+    .select('id, user_id, cp_id, status, draft_subject, draft_body_text, conversation_id, payload, rationale')
     .eq('id', actionId)
     .single();
 
@@ -74,14 +73,10 @@ export async function createOutboundDraftToCp(actionId: string): Promise<{ draft
     return { draftId: '', wasExisting: true };
   }
 
-  if (!proposal.draft_subject || !proposal.draft_body_text) {
-    throw new Error('Draft content not available');
-  }
-
-  // Get CP email address
+  // Get CP email address and name
   const { data: cp } = await supabase
     .from('cps')
-    .select('primary_identifier')
+    .select('primary_identifier, name')
     .eq('id', proposal.cp_id)
     .single();
 
@@ -89,36 +84,42 @@ export async function createOutboundDraftToCp(actionId: string): Promise<{ draft
     throw new Error('Counterparty not found');
   }
 
-  // Get external_thread_id for proper threading
+  // Get external_thread_id for proper threading and last messages
   const { data: messages } = await supabase
     .from('messages')
-    .select('external_thread_id')
+    .select('external_thread_id, body, direction')
     .eq('conversation_id', proposal.conversation_id)
-    .not('external_thread_id', 'is', null)
     .order('timestamp', { ascending: false })
-    .limit(1);
+    .limit(5);
 
   const externalThreadId = messages?.[0]?.external_thread_id || undefined;
+  const lastInboundMessage = messages?.find(m => m.direction === 'INBOUND')?.body || '';
+
+  // Generate draft using AI if not already present
+  let draftSubject = proposal.draft_subject;
+  let draftBody = proposal.draft_body_text;
+
+  if (!draftSubject || !draftBody) {
+    const { generateDraftReply } = await import('./generateDraft');
+    const generated = await generateDraftReply({
+      cpName: cp.name || cp.primary_identifier,
+      cpEmail: cp.primary_identifier,
+      conversationSummary: proposal.rationale || '',
+      lastMessage: lastInboundMessage,
+      suggestedAction: (proposal.payload as any)?.body_inputs?.topic || ''
+    });
+    draftSubject = generated.subject;
+    draftBody = generated.body;
+  }
 
   // Create Gmail client
   const { gmail } = await getGmailClient(proposal.user_id);
 
   // Create draft with proper threading via threadId field
-  const slots: BaseTemplateSlots = {
-    subject: proposal.draft_subject,
-    intro: 'Dobrý den,',
-    actionSections: [proposal.draft_body_text],
-    footer: 'S pozdravem,\nMila',
-    unsubscribeLink: '',
-    globalCtas: [],
-  };
-
-  const htmlBody = renderHtmlEmail(slots);
-
   const emailMessage = createEmailMessage(
     cp.primary_identifier,
-    proposal.draft_subject,
-    htmlBody
+    draftSubject,
+    draftBody
   );
 
   const response = await gmail.users.drafts.create({
