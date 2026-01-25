@@ -2,6 +2,7 @@
 
 import { google } from 'googleapis';
 import { createClient } from '@supabase/supabase-js';
+import { renderHtmlEmail, BaseTemplateSlots } from './templates/base';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -103,10 +104,21 @@ export async function createOutboundDraftToCp(actionId: string): Promise<{ draft
   const { gmail } = await getGmailClient(proposal.user_id);
 
   // Create draft with proper threading via threadId field
+  const slots: BaseTemplateSlots = {
+    subject: proposal.draft_subject,
+    intro: 'Dobrý den,',
+    actionSections: [proposal.draft_body_text],
+    footer: 'S pozdravem,\nMila',
+    unsubscribeLink: '',
+    globalCtas: [],
+  };
+
+  const htmlBody = renderHtmlEmail(slots);
+
   const emailMessage = createEmailMessage(
     cp.primary_identifier,
     proposal.draft_subject,
-    proposal.draft_body_text
+    htmlBody
   );
 
   const response = await gmail.users.drafts.create({
