@@ -2,6 +2,9 @@
 
 import { supabase } from '../supabase';
 import { enqueueEmailFromAction } from '../email/enqueueEmail';
+import { sendGmail } from '../email/send-gmail';
+import { renderEmail } from '../email/renderEmail';
+import { actionTemplates } from '../email/templates/byAction';
 
 interface NotificationGroup {
   conversation_id: string;
@@ -88,26 +91,56 @@ export async function sendConversationNotifications(userId: string, userEmail: s
         cpName = cp?.name || cpName;
       }
 
-      // Build subject line
-      const subject = `${cpName} - Priority ${Math.round(primaryProposal.priority_score)} - ${primaryProposal.action_type}`;
+      // Get full action proposal data for rendering
+      const { data: fullProposal } = await supabase
+        .from('action_proposals')
+        .select('*')
+        .eq('id', primaryProposal.id)
+        .single();
 
-      // Build email body
+      if (!fullProposal) continue;
+
+      // Build conversation summary for email
       const summary = conversation?.summary_json;
-      const currentState = summary?.current_state || 'No summary available';
+      const currentState = summary?.current_state || 'Žádný souhrn není k dispozici';
       const nextSteps = summary?.next_steps || [];
 
-      let body = `You have ${emailCount} new email${emailCount > 1 ? 's' : ''} from ${cpName}.\n\n`;
-      body += `Current Status:\n${currentState}\n\n`;
+      let conversationSummary = `Máte ${emailCount} ${emailCount === 1 ? 'nový email' : emailCount < 5 ? 'nové emaily' : 'nových emailů'} od ${cpName}.\n\n`;
+      conversationSummary += `Aktuální stav:\n${currentState}\n\n`;
 
       if (nextSteps.length > 0) {
-        body += `Suggested Next Steps:\n`;
+        conversationSummary += `Doporučené další kroky:\n`;
         nextSteps.forEach((step: string) => {
-          body += `• ${step}\n`;
+          conversationSummary += `• ${step}\n`;
         });
       }
 
-      // TODO: Add HTML version with proper formatting
-      const html_body = body.replace(/\n/g, '<br>');
+      // Use renderEmail with your existing templates
+      const { subject, text_body, html_body } = renderEmail(
+        {
+          action_id: primaryProposal.id,
+          action_type: primaryProposal.action_type,
+          conversation_id: conversationId,
+          priority_score: primaryProposal.priority_score,
+          impact_score: 0,
+          personal_score: 0,
+          urgency_score: 0,
+          immovability_bonus: 0,
+          context_payload: {
+            subject_inputs: { topic: conversation?.topic || cpName },
+            body_inputs: {
+              recipient_name: cpName,
+              topic: conversation?.topic || cpName,
+              conversation_summary: conversationSummary,
+              suggested_response: nextSteps.join('. ')
+            }
+          },
+          rationale: fullProposal.rationale
+        },
+        actionTemplates,
+        userEmail,
+        '' // unsubscribe link - add if needed
+      );
 
       // Send notification email to USER
       await enqueueEmailFromAction({
@@ -115,7 +148,7 @@ export async function sendConversationNotifications(userId: string, userEmail: s
         user_id: group.user_id,
         to: userEmail, // Send to the USER, not the CP
         subject,
-        text_body: body,
+        text_body,
         html_body
       });
 
@@ -132,6 +165,31 @@ export async function sendConversationNotifications(userId: string, userEmail: s
     } catch (error) {
       console.error(`Failed to send notification for conversation ${conversationId}:`, error);
       // Continue with other conversations
+    }
+  }
+
+  // Now send all pending emails that were just enqueued
+  const { data: pendingEmails } = await supabase
+    .from('emails')
+    .select('id, action_id, user_id, to, subject, text_body, html_body')
+    .eq('user_id', userId)
+    .eq('status', 'pending');
+
+  if (pendingEmails && pendingEmails.length > 0) {
+    for (const email of pendingEmails) {
+      try {
+        await sendGmail({
+          action_id: email.action_id,
+          user_id: email.user_id,
+          to: email.to,
+          subject: email.subject,
+          text_body: email.text_body,
+          html_body: email.html_body
+        });
+      } catch (error) {
+        console.error(`Failed to send email ${email.id}:`, error);
+        // Continue with other emails
+      }
     }
   }
 }
