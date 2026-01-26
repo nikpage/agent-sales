@@ -177,10 +177,10 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
               action_type: row.action_type,
               conversation_id: row.conversation_id,
               priority_score: row.priority_score,
-              impact_score: row.impact_score,
-              personal_score: row.personal_score,
-              urgency_score: row.urgency_score,
-              immovability_bonus: 0,
+              impact_score: row.dollar_value,
+              personal_score: row.pain_factor,
+              urgency_score: row.urgency,
+              immovability_bonus: row.weight,
               context_payload: row.payload as any,
               rationale: row.rationale
             },
@@ -198,14 +198,7 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
             })
             .eq('id', row.id);
 
-          await enqueueEmailFromAction({
-            action_id: row.id,
-            user_id: original.user_id,
-            to: original.recipient_email,
-            subject,
-            text_body,
-            html_body
-          });
+          // NOTE: Email sending moved to post-ingestion notification step
         })
       );
     }

@@ -12,6 +12,7 @@ import { AI_MODELS, AI_CONFIG } from '../../lib/ai/config';
 import { generateText } from '../../lib/ai/google';
 import { findOrCreateConversation, attachMessageToConversation } from '../../lib/conversation';
 import { parseEmailCommand } from '../../lib/email/commandParser';
+import { sendConversationNotifications } from '../../lib/notifications/sendConversationNotifications';
 
 async function checkWhitelist(ctx: AgentContext, emailData: any): Promise<boolean> {
   const bodySnippet = (emailData.cleanedText || '').slice(0, AI_CONFIG.whitelist.bodyCharLimit);
@@ -291,18 +292,6 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     await attachMessageToConversation(ctx.supabase, msgId, conversationId);
     console.log('DEBUG: Message attached to conversation');
 
-    // Save classification tags to message
-    console.log('DEBUG: Saving classification tags...');
-    const classification = { importance: 'REGULAR', type: 'FOLLOW_UP' };
-    await ctx.supabase
-      .from('messages')
-      .update({
-        tag_primary: classification.type,
-        tag_secondary: classification.importance
-      })
-      .eq('id', msgId);
-    console.log('DEBUG: Classification tags saved');
-
     console.log('DEBUG: Running threadEmail...');
     try {
       await threadEmail(ctx, cpId, emailData.cleanedText || '', msgId, { importance: 'REGULAR' }, emailData, conversationId);
@@ -340,6 +329,18 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     inserted: processedMessages,
     skipped: duplicateCount
   });
+
+  // Send conversation notifications for any new action proposals
+  if (processedMessages > 0) {
+    console.log('DEBUG: Sending conversation notifications...');
+    try {
+      await sendConversationNotifications(ctx.client.id, ctx.client.email);
+      console.log('DEBUG: Notifications sent');
+    } catch (error) {
+      console.error('DEBUG: Failed to send notifications:', error);
+      // Don't fail ingestion if notifications fail
+    }
+  }
 
   return { processedMessages, newHistoryId };
 }
