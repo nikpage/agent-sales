@@ -34,12 +34,21 @@ export async function findOrCreateConversation(
 
   const now = new Date().toISOString();
 
+  // Get CP name for topic
+  const { data: cpData } = await supabase
+    .from('cps')
+    .select('name')
+    .eq('id', cpId)
+    .single();
+
+  const topic = cpData?.name || 'Unknown Contact';
+
   const { data: newConversation, error: createErr }: any = await withRetry(
     () => supabase
       .from('conversation_threads')
       .insert({
         user_id: userId,
-        topic: 'New Conversation',
+        topic: topic,
         state: 'active',
         created_at: now,
         last_updated: now,
@@ -105,7 +114,7 @@ export async function attachMessageToConversation(
   const { error }: any = await withRetry(
     () => supabase
       .from('messages')
-      .update({ conversation_id: conversationId })
+.update({ conversation_id: conversationId, thread_id: conversationId })
       .eq('id', messageId),
     'db.update.messages'
   );

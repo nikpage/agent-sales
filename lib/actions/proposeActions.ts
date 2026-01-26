@@ -1,5 +1,6 @@
 // lib/actions/proposeActions.ts
 import { computeFollowUpClocks as extractFacts } from '../actionEngine/extractFacts';
+import { extractScoreFactors } from './extractScoreFactors';
 import { scoreAction, ActionScoreBreakdown } from './scoreAction';
 import { supabase } from '../supabase';
 import { enqueueEmailFromAction } from '../email/enqueueEmail';
@@ -69,9 +70,10 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
       const action_type = asNonEmptyString(input?.action_type);
       const user_id = asNonEmptyString(input?.user_id);
       const recipient_email = asNonEmptyString(input?.recipient_email);
+      const message_text = asNonEmptyString(input?.message_text);
       if (!conversation_id || !action_type || !user_id) return null;
 
-      const facts = await extractFacts([{
+      const timingFacts = await extractFacts([{
         occurred_at: input.occurred_at,
         direction: input.direction.toUpperCase() as 'INBOUND' | 'OUTBOUND'
       }]);
@@ -81,10 +83,11 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
         action_type,
         user_id,
         recipient_email,
+        message_text,
         subject_inputs: input.subject_inputs || {},
         body_inputs: input.body_inputs || {},
         rationale: input.rationale || '',
-        facts
+        timingFacts
       };
     })
   );
@@ -92,8 +95,17 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
   const valid = withFacts.filter((x): x is NonNullable<typeof x> => !!x);
 
   const scored = await Promise.all(
-    valid.map(async ({ conversation_id, action_type, user_id, recipient_email, subject_inputs, body_inputs, rationale, facts }) => {
-      const score: ActionScoreBreakdown = scoreAction(facts);
+    valid.map(async ({ conversation_id, action_type, user_id, recipient_email, message_text, subject_inputs, body_inputs, rationale, timingFacts }) => {
+      // Extract V, U, P, W from email content using AI
+      const scoreFactors = await extractScoreFactors(message_text || '');
+
+      // Combine with timing data
+      const combinedFacts = {
+        ...scoreFactors,
+        days_ignored: timingFacts.days_waiting_on_agent
+      };
+
+      const score: ActionScoreBreakdown = scoreAction(combinedFacts);
       const cp_id = await getCpIdFromConversation(conversation_id);
 
       return {
@@ -104,10 +116,10 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
         cp_id,
         recipient_email,
         priority_score: score.priority_score,
-        impact_score: score.impact_score,
-        personal_score: score.personal_score,
-        urgency_score: score.urgency_score,
-        immovability_bonus: score.immovability_bonus,
+        dollar_value: score.dollar_value,
+        urgency: score.urgency,
+        pain_factor: score.pain_factor,
+        weight: score.weight,
         context_payload: {
           subject_inputs,
           body_inputs
@@ -138,13 +150,14 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
           action_type: a.action_type,
           payload: a.context_payload,
           priority_score: a.priority_score,
-          impact_score: a.impact_score,
-          personal_score: a.personal_score,
-          urgency_score: a.urgency_score,
+          dollar_value: a.dollar_value,
+          urgency: a.urgency,
+          pain_factor: a.pain_factor,
+          weight: a.weight,
           rationale: a.rationale,
         }))
       )
-      .select('id, conversation_id, action_type, payload, priority_score, impact_score, personal_score, urgency_score, rationale');
+      .select('id, conversation_id, action_type, payload, priority_score, dollar_value, urgency, pain_factor, weight, rationale');
 
     if (error) {
       if (error.code !== '23505') throw error;
@@ -176,6 +189,15 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
             ''
           );
 
+          // Update action_proposals with draft content
+          await supabase
+            .from('action_proposals')
+            .update({
+              draft_subject: subject,
+              draft_body_text: text_body
+            })
+            .eq('id', row.id);
+
           await enqueueEmailFromAction({
             action_id: row.id,
             user_id: original.user_id,
@@ -195,10 +217,10 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
         conversation_id: row.conversation_id,
         action_type: row.action_type,
         priority_score: row.priority_score,
-        impact_score: row.impact_score,
-        personal_score: row.personal_score,
-        urgency_score: row.urgency_score,
-        immovability_bonus: orig?.immovability_bonus || 0,
+        impact_score: row.dollar_value,
+        personal_score: row.pain_factor,
+        urgency_score: row.urgency,
+        immovability_bonus: row.weight,
         context_payload: row.payload as EmailPayload,
         rationale: row.rationale
       };

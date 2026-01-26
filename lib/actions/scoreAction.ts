@@ -1,68 +1,49 @@
 // lib/actions/scoreAction.ts
 
 export interface ExtractedFacts {
-  dollar_value?: number;
-  urgency?: number;
-  pain_factor?: number;
-  days_ignored?: number;
-
-  // higher = less movable, harder deadline, more sacred
-  immovability_bonus?: number;
+  dollar_value: number;      // V: Dollar value/deal size
+  urgency: number;           // U: Urgency level 0-10
+  pain_factor: number;       // P: Administrative/legal risk 0-10
+  weight: number;            // W: Bonus weight (0 normal, 1000 sacred)
+  days_ignored: number;      // D: Days waiting on agent
 }
 
 export interface ActionScoreBreakdown {
   priority_score: number;
-
-  // component scores
-  impact_score: number;    // dollar_value × urgency
-  personal_score: number;  // pain_factor × (days_ignored + 1)²
-  urgency_score: number;   // raw urgency
-
-  immovability_bonus: number;
-}
-
-function asFiniteNumber(v: unknown): number {
-  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
-}
-
-function nonNegative(v: number): number {
-  return v > 0 ? v : 0;
+  dollar_value: number;
+  urgency: number;
+  pain_factor: number;
+  weight: number;
 }
 
 /**
  * Pure, deterministic scoring.
  *
- * priority_score =
- *   (dollar_value × urgency)
- *   + (pain_factor × (days_ignored + 1)²)
- *   + immovability_bonus
+ * PriorityScore = (V × U) + (P × (D + 1)²) + W
  *
- * This is the ONLY place where importance is decided.
+ * Where:
+ * - V = dollar_value
+ * - U = urgency (0-10)
+ * - P = pain_factor (0-10)
+ * - D = days_ignored
+ * - W = weight (0 for normal, 1000 for sacred events)
  */
 export function scoreAction(facts: ExtractedFacts): ActionScoreBreakdown {
-  const dollar_value = nonNegative(asFiniteNumber(facts.dollar_value));
-  const urgency = nonNegative(asFiniteNumber(facts.urgency));
-  const pain_factor = nonNegative(asFiniteNumber(facts.pain_factor));
-  const days_ignored = nonNegative(asFiniteNumber(facts.days_ignored));
-  const immovability_bonus = nonNegative(asFiniteNumber(facts.immovability_bonus));
+  const V = facts.dollar_value || 0;
+  const U = facts.urgency || 0;
+  const P = facts.pain_factor || 0;
+  const W = facts.weight || 0;
+  const D = facts.days_ignored || 0;
 
-  const impact_score = dollar_value * urgency;
-
-  const days_factor = days_ignored + 1;
-  const personal_score = pain_factor * (days_factor * days_factor);
-
-  const urgency_score = urgency;
-
-  const priority_score =
-    impact_score +
-    personal_score +
-    immovability_bonus;
+  const impact = V * U;
+  const personal = P * Math.pow(D + 1, 2);
+  const priority_score = impact + personal + W;
 
   return {
     priority_score,
-    impact_score,
-    personal_score,
-    urgency_score,
-    immovability_bonus,
+    dollar_value: V,
+    urgency: U,
+    pain_factor: P,
+    weight: W,
   };
 }

@@ -289,6 +289,19 @@ export async function threadEmail(
 
   await updateThreadSummary(ctx.supabase, conversationId, ctx.clientId, ctx.apiKey);
 
+  // Get summary_json to extract next_steps
+  const { data: threadData } = await ctx.supabase
+    .from('conversation_threads')
+    .select('summary_json')
+    .eq('id', conversationId)
+    .single();
+
+  console.log('THREAD DATA:', JSON.stringify(threadData));
+  const nextSteps = threadData?.summary_json?.next_steps || [];
+  console.log('NEXT STEPS:', nextSteps);
+  const suggestedResponse = nextSteps.length > 0 ? nextSteps.join('. ') : '';
+  console.log('SUGGESTED RESPONSE:', suggestedResponse);
+
   // Get message data for proposeActions
   const { data: messageData } = await ctx.supabase
     .from('messages')
@@ -300,11 +313,16 @@ export async function threadEmail(
     conversation_id: conversationId,
     action_type: classification?.type === 'EVENT' ? 'schedule_meeting' : 'follow_up',
     subject_inputs: { topic: emailData?.subject || '' },
-    body_inputs: { recipient_name: emailData?.from || '', topic: emailData?.subject || '' },
+    body_inputs: {
+      recipient_name: emailData?.from || '',
+      topic: emailData?.subject || '',
+      suggested_response: suggestedResponse
+    },
     rationale: 'Automated proposal based on incoming email classification.',
     occurred_at: messageData?.occurred_at || new Date().toISOString(),
     direction: messageData?.direction || 'inbound',
     user_id: ctx.clientId,
+    message_text: messageText,
     recipient_email:
   (messageData?.direction === 'outbound'
     ? (emailData?.toEmail || extractEmailAddress(emailData?.to) || extractEmailAddress(emailData?.toRaw))

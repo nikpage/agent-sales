@@ -291,6 +291,18 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     await attachMessageToConversation(ctx.supabase, msgId, conversationId);
     console.log('DEBUG: Message attached to conversation');
 
+    // Save classification tags to message
+    console.log('DEBUG: Saving classification tags...');
+    const classification = { importance: 'REGULAR', type: 'FOLLOW_UP' };
+    await ctx.supabase
+      .from('messages')
+      .update({
+        tag_primary: classification.type,
+        tag_secondary: classification.importance
+      })
+      .eq('id', msgId);
+    console.log('DEBUG: Classification tags saved');
+
     console.log('DEBUG: Running threadEmail...');
     try {
       await threadEmail(ctx, cpId, emailData.cleanedText || '', msgId, { importance: 'REGULAR' }, emailData, conversationId);
