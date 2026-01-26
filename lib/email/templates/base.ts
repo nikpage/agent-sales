@@ -19,6 +19,17 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#039;');
 }
 
+function convertTextToHtml(text: string): string {
+  const blocks = text.split(/\n\n+/);
+  return blocks
+    .map(block => {
+      const content = escapeHtml(block.trim()).replace(/\n/g, '<br/>');
+      return content ? `<p style="margin:0 0 12px 0;">${content}</p>` : '';
+    })
+    .filter(Boolean)
+    .join('');
+}
+
 export function renderTextEmail(slots: BaseTemplateSlots): string {
   const lines: string[] = [];
 
@@ -52,7 +63,7 @@ export function renderHtmlEmail(slots: BaseTemplateSlots): string {
 
   const actionHtml = (slots.actionSections || [])
     .filter(Boolean)
-    .map((s) => `<div style="margin:0 0 16px 0;">${s}</div>`)
+    .map((s) => convertTextToHtml(s))
     .join('');
 
   const globalCtasHtml = (slots.globalCtas || [])
@@ -93,14 +104,12 @@ export function renderHtmlEmail(slots: BaseTemplateSlots): string {
         </div>
 
         <div style="padding:22px; font-family:Arial, sans-serif; font-size:15px; line-height:1.5;">
-          <div style="margin:0 0 14px 0;">
-            ${escapeHtml(slots.intro || '')}
-          </div>
+          ${slots.intro ? convertTextToHtml(slots.intro) : ''}
 
           ${actionHtml}
 
           <div style="margin-top:32px; padding-top:20px; border-top:1px solid rgba(44,95,141,0.12); color:rgba(44,95,141,0.75); font-size:13px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
-            <div>${escapeHtml(slots.footer || '')}</div>
+            ${slots.footer ? `<div>${convertTextToHtml(slots.footer)}</div>` : '<div></div>'}
             ${
               globalCtasHtml
                 ? `<div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end;">

@@ -37,9 +37,9 @@ export function renderEmail(
 
   const slots: BaseTemplateSlots = {
     subject,
-    intro: `Dobrý den,`,
+    intro: '',
     actionSections: [actionSection],
-    footer: `S pozdravem,\nMila`,
+    footer: '',
     unsubscribeLink,
     globalCtas: appUrl
       ? [

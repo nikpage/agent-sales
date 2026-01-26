@@ -3,8 +3,19 @@
 import { supabase } from '../supabase';
 import { enqueueEmailFromAction } from '../email/enqueueEmail';
 import { sendGmail } from '../email/send-gmail';
-import { renderEmail } from '../email/renderEmail';
-import { actionTemplates } from '../email/templates/byAction';
+import { generateText } from '../ai/google';
+import { buildFollowUpPrompt } from '../ai/prompts/followUpPrompt';
+
+function convertTextToHtml(text: string): string {
+  const blocks = text.split(/\n\n+/);
+  return blocks
+    .map(block => {
+      const content = block.trim().replace(/\n/g, '<br/>');
+      return content ? `<p>${content}</p>` : '';
+    })
+    .filter(Boolean)
+    .join('');
+}
 
 interface NotificationGroup {
   conversation_id: string;
@@ -91,62 +102,46 @@ export async function sendConversationNotifications(userId: string, userEmail: s
         cpName = cp?.name || cpName;
       }
 
-      // Get full action proposal data for rendering
-      const { data: fullProposal } = await supabase
-        .from('action_proposals')
-        .select('*')
-        .eq('id', primaryProposal.id)
-        .single();
+      // Build subject line
+      const subject = `${cpName} - Priority ${Math.round(primaryProposal.priority_score)} - ${primaryProposal.action_type}`;
 
-      if (!fullProposal) continue;
-
-      // Build conversation summary for email
       const summary = conversation?.summary_json;
-      const currentState = summary?.current_state || 'Žádný souhrn není k dispozici';
+      const currentState = summary?.current_state || 'No summary available';
       const nextSteps = summary?.next_steps || [];
 
-      let conversationSummary = `Máte ${emailCount} ${emailCount === 1 ? 'nový email' : emailCount < 5 ? 'nové emaily' : 'nových emailů'} od ${cpName}.\n\n`;
-      conversationSummary += `Aktuální stav:\n${currentState}\n\n`;
+      const facts = {
+        cpName,
+        priority_score: primaryProposal.priority_score,
+        current_state: currentState,
+        next_steps: nextSteps,
+        topic: conversation?.topic,
+        emailCount
+      };
 
-      if (nextSteps.length > 0) {
-        conversationSummary += `Doporučené další kroky:\n`;
-        nextSteps.forEach((step: string) => {
-          conversationSummary += `• ${step}\n`;
-        });
+      let text_body: string;
+      try {
+        text_body = await generateText(buildFollowUpPrompt(facts), { temperature: 0.2 });
+      } catch (error) {
+        console.error('Failed to generate AI text, using fallback:', error);
+        const priorityLabel = facts.priority_score >= 70 ? 'Vysoká' : facts.priority_score >= 40 ? 'Střední' : 'Nízká';
+        text_body = `Dobrý den,\n\nPRIORITA: ${priorityLabel}\n\nSHRNUTÍ KONVERZACE:\n`;
+        text_body += `• Máte ${emailCount} ${emailCount > 1 ? 'nové zprávy' : 'novou zprávu'} od ${cpName}\n`;
+        text_body += `\nAKTUÁLNÍ SITUACE:\n${currentState}\n\n`;
+        text_body += `DOPORUČENÁ AKCE:\n`;
+        if (nextSteps.length > 0) {
+          text_body += nextSteps[0];
+        } else {
+          text_body += `Zkontrolujte konverzaci a odpovězte na dotazy.`;
+        }
       }
 
-      // Use renderEmail with your existing templates
-      const { subject, text_body, html_body } = renderEmail(
-        {
-          action_id: primaryProposal.id,
-          action_type: primaryProposal.action_type,
-          conversation_id: conversationId,
-          priority_score: primaryProposal.priority_score,
-          impact_score: 0,
-          personal_score: 0,
-          urgency_score: 0,
-          immovability_bonus: 0,
-          context_payload: {
-            subject_inputs: { topic: conversation?.topic || cpName },
-            body_inputs: {
-              recipient_name: cpName,
-              topic: conversation?.topic || cpName,
-              conversation_summary: conversationSummary,
-              suggested_response: nextSteps.join('. ')
-            }
-          },
-          rationale: fullProposal.rationale
-        },
-        actionTemplates,
-        userEmail,
-        '' // unsubscribe link - add if needed
-      );
+      const html_body = convertTextToHtml(text_body);
 
       // Send notification email to USER
       await enqueueEmailFromAction({
         action_id: primaryProposal.id,
         user_id: group.user_id,
-        to: userEmail, // Send to the USER, not the CP
+        to: userEmail,
         subject,
         text_body,
         html_body
