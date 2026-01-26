@@ -8,6 +8,7 @@ export type BaseTemplateSlots = {
   unsubscribeLink?: string;
   pixelUrl?: string;
   globalCtas?: Array<{ label: string; url: string }>;
+  actionCtas?: Array<{ label: string; url: string }>;
 };
 
 function escapeHtml(s: string): string {
@@ -66,6 +67,17 @@ export function renderHtmlEmail(slots: BaseTemplateSlots): string {
     .map((s) => convertTextToHtml(s))
     .join('');
 
+  const actionCtasHtml = (slots.actionCtas || [])
+    .map(
+      (cta) => `
+      <a href="${escapeHtml(cta.url)}"
+         style="display:inline-block; background:${brass}; color:${white}; padding:12px 24px; border-radius:6px; text-decoration:none; font-family:Arial, sans-serif; font-size:14px; font-weight:600; margin:8px 8px 8px 0;">
+        ${escapeHtml(cta.label)}
+      </a>
+    `
+    )
+    .join('');
+
   const globalCtasHtml = (slots.globalCtas || [])
     .map(
       (cta) => `
@@ -107,6 +119,8 @@ export function renderHtmlEmail(slots: BaseTemplateSlots): string {
           ${slots.intro ? convertTextToHtml(slots.intro) : ''}
 
           ${actionHtml}
+
+          ${actionCtasHtml ? `<div style="margin-top:24px; display:flex; gap:12px; flex-wrap:wrap;">${actionCtasHtml}</div>` : ''}
 
           <div style="margin-top:32px; padding-top:20px; border-top:1px solid rgba(44,95,141,0.12); color:rgba(44,95,141,0.75); font-size:13px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
             ${slots.footer ? `<div>${convertTextToHtml(slots.footer)}</div>` : '<div></div>'}

@@ -32,6 +32,7 @@ export function renderEmail(
 
   const subject = template.subject(action.context_payload);
   const actionSection = template.actionSection(action.context_payload);
+  const actionCtas = template.actionCtas ? template.actionCtas(action.context_payload) : undefined;
 
   const appUrl = process.env.APP_URL || '';
 
@@ -41,6 +42,7 @@ export function renderEmail(
     actionSections: [actionSection],
     footer: '',
     unsubscribeLink,
+    actionCtas,
     globalCtas: appUrl
       ? [
           { label: 'Email', url: `${appUrl}` },

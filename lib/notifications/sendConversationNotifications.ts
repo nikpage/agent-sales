@@ -5,17 +5,8 @@ import { enqueueEmailFromAction } from '../email/enqueueEmail';
 import { sendGmail } from '../email/send-gmail';
 import { generateText } from '../ai/google';
 import { buildFollowUpPrompt } from '../ai/prompts/followUpPrompt';
-
-function convertTextToHtml(text: string): string {
-  const blocks = text.split(/\n\n+/);
-  return blocks
-    .map(block => {
-      const content = block.trim().replace(/\n/g, '<br/>');
-      return content ? `<p>${content}</p>` : '';
-    })
-    .filter(Boolean)
-    .join('');
-}
+import { renderEmail } from '../email/renderEmail';
+import { actionTemplates } from '../email/templates/byAction';
 
 interface NotificationGroup {
   conversation_id: string;
@@ -135,16 +126,47 @@ export async function sendConversationNotifications(userId: string, userEmail: s
         }
       }
 
-      const html_body = convertTextToHtml(text_body);
+      const rendered = renderEmail(
+        {
+          action_id: primaryProposal.id,
+          action_type: 'follow_up',
+          conversation_id: conversationId,
+          priority_score: primaryProposal.priority_score,
+          impact_score: 0,
+          personal_score: 0,
+          urgency_score: 0,
+          immovability_bonus: 0,
+          context_payload: {
+            subject_inputs: {
+              cpName,
+              priority_score: primaryProposal.priority_score,
+              action_type: primaryProposal.action_type
+            },
+            body_inputs: {
+              normalized_body: text_body
+            },
+            action_id: primaryProposal.id,
+            user_email: userEmail
+          },
+          rationale: ''
+        },
+        actionTemplates,
+        userEmail,
+        ''
+      );
+
+      const final_subject = rendered.subject;
+      const final_text_body = rendered.text_body;
+      const final_html_body = rendered.html_body;
 
       // Send notification email to USER
       await enqueueEmailFromAction({
         action_id: primaryProposal.id,
         user_id: group.user_id,
         to: userEmail,
-        subject,
-        text_body,
-        html_body
+        subject: final_subject,
+        text_body: final_text_body,
+        html_body: final_html_body
       });
 
       // Mark ALL proposals in this conversation as notified

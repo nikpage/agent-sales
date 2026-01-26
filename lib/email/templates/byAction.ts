@@ -139,42 +139,28 @@ ${content.intent}`;
 export interface ActionTemplate {
   subject: (payload: any) => string;
   actionSection: (payload: any) => string;
+  actionCtas?: (payload: any) => Array<{ label: string; url: string }>;
 }
 
 export const actionTemplates: Record<string, ActionTemplate> = {
   follow_up: {
     subject: (payload) => {
-      const recipient = payload.body_inputs?.recipient_name || 'Contact';
-      const topic = payload.subject_inputs?.topic || '';
-      return topic ? `Re: ${topic}` : `Follow up: ${recipient}`;
+      const cpName = payload.subject_inputs?.cpName || 'Contact';
+      const priority = payload.subject_inputs?.priority_score || 0;
+      const actionType = payload.subject_inputs?.action_type || 'follow_up';
+      return `${cpName} - Priority ${Math.round(priority)} - ${actionType}`;
     },
     actionSection: (payload) => {
-      const recipient = payload.body_inputs?.recipient_name || 'Contact';
-      const topic = payload.body_inputs?.topic || payload.subject_inputs?.topic || '';
-      const summary = payload.body_inputs?.conversation_summary || '';
-      const suggestedResponse = payload.body_inputs?.suggested_response || '';
-
-      let content = `Ahoj,
-
-Je potřeba odpovědět na email od ${recipient}.
-
-Téma: ${topic}`;
-
-      if (summary) {
-        content += `
-
-KONTEXT KONVERZACE:
-${summary}`;
-      }
-
-      if (suggestedResponse) {
-        content += `
-
-NAVRHOVANÁ ODPOVĚĎ:
-${suggestedResponse}`;
-      }
-
-      return content;
+      return payload.body_inputs?.normalized_body || '';
+    },
+    actionCtas: (payload) => {
+      const actionId = payload.action_id || '';
+      const userEmail = payload.user_email || '';
+      return [
+        { label: 'UDĚLEJ TO', url: `mailto:${userEmail}?subject=Action: Execute ${actionId}` },
+        { label: 'UPRAVIT', url: `mailto:${userEmail}?subject=Action: Edit ${actionId}` },
+        { label: 'VYŘEŠÍM SÁM', url: `mailto:${userEmail}?subject=Action: Dismiss ${actionId}` }
+      ];
     }
   },
 
