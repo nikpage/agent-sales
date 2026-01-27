@@ -96,7 +96,7 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
 
   const scored = await Promise.all(
     valid.map(async ({ conversation_id, action_type, user_id, recipient_email, message_text, subject_inputs, body_inputs, rationale, timingFacts }) => {
-      // Extract V, U, P, W from email content using AI
+      // Extract V, U, P, W, offer_multiplier from email content using AI
       const scoreFactors = await extractScoreFactors(message_text || '');
 
       // Combine with timing data
@@ -120,6 +120,7 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
         urgency: score.urgency,
         pain_factor: score.pain_factor,
         weight: score.weight,
+        offer_multiplier: score.offer_multiplier,
         context_payload: {
           subject_inputs,
           body_inputs
@@ -173,10 +174,11 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
           urgency: a.urgency,
           pain_factor: a.pain_factor,
           weight: a.weight,
+          offer_multiplier: a.offer_multiplier,
           rationale: a.rationale,
         }))
       )
-      .select('id, conversation_id, action_type, payload, priority_score, dollar_value, urgency, pain_factor, weight, rationale');
+      .select('id, conversation_id, action_type, payload, priority_score, dollar_value, urgency, pain_factor, weight, offer_multiplier, rationale');
 
     if (error) {
       if (error.code !== '23505') throw error;

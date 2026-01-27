@@ -1,10 +1,11 @@
 // lib/actions/scoreAction.ts
 
 export interface ExtractedFacts {
-  dollar_value: number;      // V: Dollar value/deal size
+  dollar_value: number;      // V: Dollar value/deal size (1-13 symbolic)
   urgency: number;           // U: Urgency level 0-10
   pain_factor: number;       // P: Administrative/legal risk 0-10
-  weight: number;            // W: Bonus weight (0 normal, 1000 sacred)
+  weight: number;            // W: 0-10 movable, 100 immovable
+  offer_multiplier: number;  // 1.5 for property offers, 1.0 otherwise
   days_ignored: number;      // D: Days waiting on agent
 }
 
@@ -14,19 +15,21 @@ export interface ActionScoreBreakdown {
   urgency: number;
   pain_factor: number;
   weight: number;
+  offer_multiplier: number;
 }
 
 /**
  * Pure, deterministic scoring.
  *
- * PriorityScore = (V × U) + (P × (D + 1)²) + W
+ * PriorityScore = (V_adjusted × U) + (P × (D + 1)²) + W
  *
  * Where:
- * - V = dollar_value
+ * - V_adjusted = dollar_value × offer_multiplier
  * - U = urgency (0-10)
  * - P = pain_factor (0-10)
  * - D = days_ignored
- * - W = weight (0 for normal, 1000 for sacred events)
+ * - W = weight (0-10 for movable, 100 for immovable)
+ * - offer_multiplier = 1.5 for property offers, 1.0 otherwise
  */
 export function scoreAction(facts: ExtractedFacts): ActionScoreBreakdown {
   const V = facts.dollar_value || 0;
@@ -34,8 +37,10 @@ export function scoreAction(facts: ExtractedFacts): ActionScoreBreakdown {
   const P = facts.pain_factor || 0;
   const W = facts.weight || 0;
   const D = facts.days_ignored || 0;
+  const M = facts.offer_multiplier || 1.0;
 
-  const impact = V * U;
+  const V_adjusted = V * M;
+  const impact = V_adjusted * U;
   const personal = P * Math.pow(D + 1, 2);
   const priority_score = impact + personal + W;
 
@@ -45,5 +50,6 @@ export function scoreAction(facts: ExtractedFacts): ActionScoreBreakdown {
     urgency: U,
     pain_factor: P,
     weight: W,
+    offer_multiplier: M,
   };
 }

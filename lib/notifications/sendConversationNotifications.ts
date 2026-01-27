@@ -75,6 +75,16 @@ export async function sendConversationNotifications(userId: string, userEmail: s
         .eq('id', conversationId)
         .single();
 
+      // Get the action proposal payload for suggested_response AND urgency
+      const { data: proposalData } = await supabase
+        .from('action_proposals')
+        .select('payload, urgency_score')
+        .eq('id', primaryProposal.id)
+        .single();
+
+      const suggestedResponse = proposalData?.payload?.body_inputs?.suggested_response;
+      const urgencyScore = proposalData?.urgency_score || 5;
+
       // Get CP name
       const { data: cpParticipant } = await supabase
         .from('thread_participants')
@@ -94,7 +104,17 @@ export async function sendConversationNotifications(userId: string, userEmail: s
       }
 
       // Build subject line
-      const subject = `${cpName} - Priority ${Math.round(primaryProposal.priority_score)} - ${primaryProposal.action_type}`;
+      const subject = `${cpName} - Priorita ${Math.round(primaryProposal.priority_score)}`;
+
+      // Determine urgency text based on urgency_score
+      let urgencyText: string;
+      if (urgencyScore >= 9) {
+        urgencyText = "MUSÍŠ to udělat TEĎ";
+      } else if (urgencyScore >= 7) {
+        urgencyText = "Měl bys to udělat dnes";
+      } else {
+        urgencyText = "Měl bys to udělat brzy";
+      }
 
       const summary = conversation?.summary_json;
       const currentState = summary?.current_state || 'No summary available';
@@ -103,40 +123,55 @@ export async function sendConversationNotifications(userId: string, userEmail: s
       const facts = {
         cpName,
         priority_score: primaryProposal.priority_score,
+        urgency_score: urgencyScore,
         current_state: currentState,
         next_steps: nextSteps,
         topic: conversation?.topic,
-        emailCount
+        emailCount,
+        suggested_response: suggestedResponse
       };
 
       let text_body: string;
       try {
-        const userPrompt = `Kontakt: ${facts.cpName}
-Priorita: ${facts.priority_score}
-Počet emailů: ${facts.emailCount}
+        const userPrompt = `KONTEXT KONVERZACE:
+
+Klient: ${facts.cpName}
 ${facts.topic ? `Téma: ${facts.topic}` : ''}
 
-Aktuální stav:
+Co se stalo (Why):
 ${facts.current_state}
 
-${facts.next_steps.length > 0 ? `Navrhované kroky:\n${facts.next_steps.map(s => `- ${s}`).join('\n')}` : ''}`;
+${facts.suggested_response ? `Co klient potřebuje:\n${facts.suggested_response}` : ''}
+
+${facts.next_steps.length > 0 ? `Další kontext:\n${facts.next_steps.join('\n')}` : ''}
+
+---
+
+Napiš email podle přesné struktury:
+
+Action: [Co uděláš - např. "Napíšu mu odpověď a potvrdím schůzku"]
+
+Why: [Proč - použij "Co se stalo" výše]
+
+[Pokud ti chybí konkrétní fakta k odpovědi:]
+Info needed:
+* [konkrétní věc 1]
+* [konkrétní věc 2]
+
+Klikni UPRAVIT a doplň.
+
+Prostý text, žádné markdown.`;
 
         text_body = await generateText(userPrompt, {
           temperature: 0.2,
           systemInstruction: buildFollowUpPrompt(facts)
         });
+
+        // Add urgency line at the beginning
+        text_body = `${urgencyText}\n\n${text_body}`;
       } catch (error) {
         console.error('Failed to generate AI text, using fallback:', error);
-        const priorityLabel = facts.priority_score >= 70 ? 'Vysoká' : facts.priority_score >= 40 ? 'Střední' : 'Nízká';
-        text_body = `Dobrý den,\n\nPRIORITA: ${priorityLabel}\n\nSHRNUTÍ KONVERZACE:\n`;
-        text_body += `• Máte ${emailCount} ${emailCount > 1 ? 'nové zprávy' : 'novou zprávu'} od ${cpName}\n`;
-        text_body += `\nAKTUÁLNÍ SITUACE:\n${currentState}\n\n`;
-        text_body += `DOPORUČENÁ AKCE:\n`;
-        if (nextSteps.length > 0) {
-          text_body += nextSteps[0];
-        } else {
-          text_body += `Zkontrolujte konverzaci a odpovězte na dotazy.`;
-        }
+        text_body = `${urgencyText}\n\nAction: Odpovědět na zprávu od ${cpName}\n\nWhy: ${currentState}`;
       }
 
       const rendered = renderEmail(

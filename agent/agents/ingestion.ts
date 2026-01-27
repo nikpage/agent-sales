@@ -5,7 +5,7 @@ import { withRetry } from '../retryPolicy';
 import { storeMessage } from '../../lib/ingestion';
 import { generateEmbedding, storeEmbedding } from '../../lib/embeddings';
 import { threadEmail } from '../agentSteps/thread';
-import { resolveCp, getSenderEmail } from '../../lib/cp';
+import { resolveCp, getSenderEmail, normalizeGmailAddress } from '../../lib/cp';
 import { ingestEmail } from '../agentSteps/ingest';
 import { whitelistPrompt } from '../../lib/ai/prompts/whitelist';
 import { AI_MODELS, AI_CONFIG } from '../../lib/ai/config';
@@ -37,8 +37,13 @@ async function checkWhitelist(ctx: AgentContext, emailData: any): Promise<boolea
  */
 async function checkForCommand(ctx: AgentContext, emailData: any): Promise<boolean> {
   // Only check emails FROM the user (not TO the user)
+  if (!ctx.client.email) {
+    return false;
+  }
+
   const fromEmail = getSenderEmail(emailData.from);
-  if (fromEmail !== ctx.client.email.toLowerCase()) {
+  const userEmail = normalizeGmailAddress(ctx.client.email.toLowerCase());
+  if (fromEmail !== userEmail) {
     return false;
   }
 
@@ -150,10 +155,8 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     newHistoryId = maxHistoryItemId > 0 ? maxHistoryItemId.toString() : null;
   }
 
-  // Process all collected message IDs
-
-  // Deduplicate by threadId - keep only newest message per thread
-  const threadMap = new Map<string, { messageId: string; internalDate: number }>();
+  // Sort messageIds by timestamp (oldest first) to build conversations correctly
+  const messagesWithTimestamps: { id: string; timestamp: number }[] = [];
 
   for (const messageId of messageIds) {
     try {
@@ -165,24 +168,22 @@ export async function runIngestion(ctx: AgentContext): Promise<{
         }),
         'gmail.get'
       );
-
-      const threadId = msg.data.threadId;
       const internalDate = parseInt(msg.data.internalDate || '0');
-
-      const existing = threadMap.get(threadId);
-      if (!existing || internalDate > existing.internalDate) {
-        threadMap.set(threadId, { messageId, internalDate });
-      }
+      messagesWithTimestamps.push({ id: messageId, timestamp: internalDate });
     } catch (error) {
-      console.error(`Failed to fetch message ${messageId} for deduplication:`, error);
-      // Keep this message in the list anyway
-      threadMap.set(messageId, { messageId, internalDate: 0 });
+      console.error(`Failed to fetch message ${messageId} for sorting:`, error);
+      // Add with timestamp 0 so it doesn't get lost
+      messagesWithTimestamps.push({ id: messageId, timestamp: 0 });
     }
   }
 
-  const dedupedMessageIds = Array.from(threadMap.values()).map(v => v.messageId);
+  // Sort oldest first
+  messagesWithTimestamps.sort((a, b) => a.timestamp - b.timestamp);
+  messageIds = messagesWithTimestamps.map(m => m.id);
 
-  for (const messageId of dedupedMessageIds) {
+  // Process all collected message IDs
+  for (const messageId of messageIds) {
+
     try {
 
     const isNew = await assertMessageNotProcessed(ctx.supabase, messageId);
@@ -196,9 +197,16 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     }
 
     // SKIP USER EMAILS FIRST - before any CP resolution or processing
-    const fromEmail = getSenderEmail(emailData.from);
-    if (fromEmail === ctx.client.email.toLowerCase()) {
-      continue;
+    if (ctx.client.email) {
+      const fromEmail = getSenderEmail(emailData.from);
+      const userEmail = normalizeGmailAddress(ctx.client.email.toLowerCase());
+      console.log(`DEBUG: Comparing emails - from: "${fromEmail}" vs user: "${userEmail}"`);
+      if (fromEmail === userEmail) {
+        console.log(`DEBUG: Skipping user's own email`);
+        continue;
+      }
+    } else {
+      console.log(`DEBUG: ctx.client.email is null/undefined`);
     }
 
     // CHECK FOR COMMAND FIRST - if it's a command, skip all normal processing

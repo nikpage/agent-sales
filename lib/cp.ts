@@ -2,7 +2,21 @@
 
 export function getSenderEmail(fromHeader: string): string {
   const match = fromHeader.match(/<(.+?)>/);
-  return (match ? match[1] : fromHeader).trim().toLowerCase();
+  const email = (match ? match[1] : fromHeader).trim().toLowerCase();
+  return normalizeGmailAddress(email);
+}
+
+export function normalizeGmailAddress(email: string): string {
+  const lower = email.toLowerCase();
+  const [localPart, domain] = lower.split('@');
+
+  // Only normalize Gmail addresses
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    // Remove all dots from local part
+    return localPart.replace(/\./g, '') + '@' + domain;
+  }
+
+  return lower;
 }
 
 function getSenderName(fromHeader: string): string {
