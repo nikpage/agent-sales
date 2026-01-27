@@ -140,10 +140,28 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
   const deduped = Array.from(byKey.values());
 
   if (deduped.length) {
+    const existingProposals = await Promise.all(
+      deduped.map(async (a) => {
+        const { data } = await supabase
+          .from('action_proposals')
+          .select('id')
+          .eq('conversation_id', a.conversation_id)
+          .eq('action_type', a.action_type)
+          .maybeSingle();
+        return data ? a : null;
+      })
+    );
+
+    const toInsert = deduped.filter((_, i) => !existingProposals[i]);
+
+    if (toInsert.length === 0) {
+      return [];
+    }
+
     const { data, error } = await supabase
       .from('action_proposals')
       .insert(
-        deduped.map((a) => ({
+        toInsert.map((a) => ({
           conversation_id: a.conversation_id,
           user_id: a.user_id,
           cp_id: a.cp_id,
@@ -166,7 +184,7 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
     if (data) {
       await Promise.all(
         data.map(async (row) => {
-          const original = deduped.find(d => d.conversation_id === row.conversation_id && d.action_type === row.action_type);
+          const original = toInsert.find(d => d.conversation_id === row.conversation_id && d.action_type === row.action_type);
           if (!original) return;
           if (!EMAIL_ACTION_TYPES.has(original.action_type)) return;
           if (!original.recipient_email) return;
@@ -204,7 +222,7 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
     }
 
     return (data || []).map(row => {
-      const orig = deduped.find(d => d.conversation_id === row.conversation_id && d.action_type === row.action_type);
+      const orig = toInsert.find(d => d.conversation_id === row.conversation_id && d.action_type === row.action_type);
       return {
         action_id: row.id,
         conversation_id: row.conversation_id,

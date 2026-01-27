@@ -13,6 +13,7 @@ import { generateText } from '../../lib/ai/google';
 import { findOrCreateConversation, attachMessageToConversation } from '../../lib/conversation';
 import { parseEmailCommand } from '../../lib/email/commandParser';
 import { sendConversationNotifications } from '../../lib/notifications/sendConversationNotifications';
+import { assertMessageNotProcessed } from '../idempotency';
 
 async function checkWhitelist(ctx: AgentContext, emailData: any): Promise<boolean> {
   const bodySnippet = (emailData.cleanedText || '').slice(0, AI_CONFIG.whitelist.bodyCharLimit);
@@ -181,28 +182,26 @@ export async function runIngestion(ctx: AgentContext): Promise<{
   const dedupedMessageIds = Array.from(threadMap.values()).map(v => v.messageId);
 
   for (const messageId of dedupedMessageIds) {
+    try {
+
+    const isNew = await assertMessageNotProcessed(ctx.supabase, messageId);
+    if (!isNew) {
+      continue;
+    }
 
     const emailData = await ingestEmail(ctx, { id: messageId });
     if (!emailData) {
       continue;
     }
 
+    if (emailData.from.includes(ctx.client.email)) {
+      continue;
+    }
+
     // CHECK FOR COMMAND FIRST - if it's a command, skip all normal processing
     const wasCommand = await checkForCommand(ctx, emailData);
     if (wasCommand) {
-      try {
-        await withRetry(
-          () => ctx.gmail.users.messages.modify({
-            userId: 'me',
-            id: messageId,
-            requestBody: { removeLabelIds: ['UNREAD'] },
-          }),
-          'gmail.modify'
-        );
-      } catch (error) {
-        console.error('Failed to modify message labels:', error);
-      }
-      continue; // Skip to next message
+      continue;
     }
 
     // Fetch full message to check labels
@@ -243,18 +242,6 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     }
 
     if (cpData?.is_blacklisted) {
-      try {
-        await withRetry(
-          () => ctx.gmail.users.messages.modify({
-            userId: 'me',
-            id: messageId,
-            requestBody: { removeLabelIds: ['UNREAD'] },
-          }),
-          'gmail.modify'
-        );
-      } catch (error) {
-        console.error('Failed to modify message labels:', error);
-      }
       continue;
     }
 
@@ -297,22 +284,23 @@ export async function runIngestion(ctx: AgentContext): Promise<{
     } catch (error) {
       console.error('DEBUG: threadEmail FAILED:', error);
       console.error('DEBUG: Error details:', error instanceof Error ? error.message : String(error));
-      // Continue anyway - don't let threadEmail failure stop processing
     }
 
     processedMessages++;
 
-    try {
-      await withRetry(
-        () => ctx.gmail.users.messages.modify({
-          userId: 'me',
-          id: messageId,
-          requestBody: { removeLabelIds: ['UNREAD'] },
-        }),
-        'gmail.modify'
-      );
-    } catch (error) {
-      console.error('Failed to modify message labels:', error);
+    } finally {
+      try {
+        await withRetry(
+          () => ctx.gmail.users.messages.modify({
+            userId: 'me',
+            id: messageId,
+            requestBody: { removeLabelIds: ['UNREAD'] },
+          }),
+          'gmail.modify'
+        );
+      } catch (error) {
+        console.error('Failed to modify message labels:', error);
+      }
     }
 
   }

@@ -111,7 +111,20 @@ export async function sendConversationNotifications(userId: string, userEmail: s
 
       let text_body: string;
       try {
-        text_body = await generateText(buildFollowUpPrompt(facts), { temperature: 0.2 });
+        const userPrompt = `Kontakt: ${facts.cpName}
+Priorita: ${facts.priority_score}
+Počet emailů: ${facts.emailCount}
+${facts.topic ? `Téma: ${facts.topic}` : ''}
+
+Aktuální stav:
+${facts.current_state}
+
+${facts.next_steps.length > 0 ? `Navrhované kroky:\n${facts.next_steps.map(s => `- ${s}`).join('\n')}` : ''}`;
+
+        text_body = await generateText(userPrompt, {
+          temperature: 0.2,
+          systemInstruction: buildFollowUpPrompt(facts)
+        });
       } catch (error) {
         console.error('Failed to generate AI text, using fallback:', error);
         const priorityLabel = facts.priority_score >= 70 ? 'Vysoká' : facts.priority_score >= 40 ? 'Střední' : 'Nízká';

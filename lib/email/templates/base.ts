@@ -71,7 +71,7 @@ export function renderHtmlEmail(slots: BaseTemplateSlots): string {
     .map(
       (cta) => `
       <a href="${escapeHtml(cta.url)}"
-         style="display:inline-block; background:${brass}; color:${white}; padding:12px 24px; border-radius:6px; text-decoration:none; font-family:Arial, sans-serif; font-size:14px; font-weight:600; margin:8px 8px 8px 0;">
+         style="display:inline-block; background:${brass}; color:${white}; padding:12px 24px; border-radius:6px; text-decoration:none; font-family:Arial, sans-serif; font-size:14px; font-weight:600; margin:8px 8px 8px 0; transition:all 0.2s ease;">
         ${escapeHtml(cta.label)}
       </a>
     `
@@ -82,7 +82,7 @@ export function renderHtmlEmail(slots: BaseTemplateSlots): string {
     .map(
       (cta) => `
       <a href="${escapeHtml(cta.url)}"
-         style="display:inline-block; background:${navy}; color:${white}; padding:6px 12px; border-radius:3px; text-decoration:none; font-family:Arial, sans-serif; font-size:12px; font-weight:600; margin:0 8px 0 0;">
+         style="display:inline-block; background:${navy}; color:${white}; padding:6px 12px; border-radius:3px; text-decoration:none; font-family:Arial, sans-serif; font-size:12px; font-weight:600; margin:0 8px 0 0; transition:all 0.2s ease;">
         ${escapeHtml(cta.label)}
       </a>
     `
@@ -105,9 +105,9 @@ export function renderHtmlEmail(slots: BaseTemplateSlots): string {
       <div style="max-width:640px; margin:0 auto; background:${white}; border-radius:12px; box-shadow:0 6px 20px rgba(27,38,59,0.08); overflow:hidden;">
         <div style="padding:20px 22px; border-bottom:1px solid rgba(27,38,59,0.08); background:${bg};">
           <div style="font-family: Georgia, 'Times New Roman', serif; color:${navy}; display:inline-block; text-align:left;">
-            <div style="font-size:28px; font-weight:700; letter-spacing:-0.5px; line-height:1;">
+            <div style="font-size:28px; font-weight:700; letter-spacing:-0.5px; line-height:1; display:flex; align-items:center; gap:6px;">
               Mila
-              <span style="display:inline-block; width:10px; height:10px; background:${brass}; border-radius:2px; margin-left:6px; transform:rotate(45deg);"></span>
+              <span style="display:inline-block; width:10px; height:10px; background:${brass}; border-radius:2px; transform:rotate(45deg);"></span>
             </div>
             <div style="font-family: Arial, sans-serif; font-size:10px; text-transform:uppercase; letter-spacing:2px; color:${brass}; margin-top:2px;">
               Executive Assistant
@@ -122,8 +122,8 @@ export function renderHtmlEmail(slots: BaseTemplateSlots): string {
 
           ${actionCtasHtml ? `<div style="margin-top:24px; display:flex; gap:12px; flex-wrap:wrap;">${actionCtasHtml}</div>` : ''}
 
-          <div style="margin-top:32px; padding-top:20px; border-top:1px solid rgba(44,95,141,0.12); color:rgba(44,95,141,0.75); font-size:13px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
-            ${slots.footer ? `<div>${convertTextToHtml(slots.footer)}</div>` : '<div></div>'}
+          <div style="margin-top:32px; padding-top:20px; border-top:1px solid rgba(35,71,107,0.12); color:rgba(35,71,107,0.75); font-size:13px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+            ${slots.footer ? `<div>${convertTextToHtml(slots.footer)}</div>` : '<div>S pozdravem,<br/>Mila</div>'}
             ${
               globalCtasHtml
                 ? `<div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end;">
