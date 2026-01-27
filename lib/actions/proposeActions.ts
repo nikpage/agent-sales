@@ -140,19 +140,20 @@ export async function proposeActions(inputs: ActionInput[]): Promise<ProposedAct
   const deduped = Array.from(byKey.values());
 
   if (deduped.length) {
-    const existingProposals = await Promise.all(
-      deduped.map(async (a) => {
-        const { data } = await supabase
-          .from('action_proposals')
-          .select('id')
-          .eq('conversation_id', a.conversation_id)
-          .eq('action_type', a.action_type)
-          .maybeSingle();
-        return data ? a : null;
-      })
-    );
+    // Check for existing proposals
+    const toInsert = [];
+    for (const item of deduped) {
+      const { data: existing } = await supabase
+        .from('action_proposals')
+        .select('id')
+        .eq('conversation_id', item.conversation_id)
+        .eq('action_type', item.action_type)
+        .maybeSingle();
 
-    const toInsert = deduped.filter((_, i) => !existingProposals[i]);
+      if (!existing) {
+        toInsert.push(item);
+      }
+    }
 
     if (toInsert.length === 0) {
       return [];

@@ -5,18 +5,12 @@ import { useState } from 'react';
 import { verifySignature } from '../../lib/security';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
-
 interface Props {
   proposal: {
     id: string;
     draft_subject: string;
     draft_body_text: string;
-    action_type: string;
-  };
+  } | null;
   error?: string;
 }
 
@@ -26,7 +20,7 @@ export default function EditProposal({ proposal, error }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  if (error) {
+  if (error || !proposal) {
     return (
       <div style={{
         minHeight: '100vh',
@@ -44,7 +38,7 @@ export default function EditProposal({ proposal, error }: Props) {
           maxWidth: '500px'
         }}>
           <h1 style={{ color: '#23476B', marginTop: 0 }}>Error</h1>
-          <p style={{ color: '#666' }}>{error}</p>
+          <p style={{ color: '#666' }}>{error || 'Proposal not found'}</p>
         </div>
       </div>
     );
@@ -226,7 +220,6 @@ export default function EditProposal({ proposal, error }: Props) {
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const { id } = context.params!;
-  const { sig, ...params } = context.query;
 
   if (!verifySignature(context.query)) {
     return {
@@ -237,9 +230,14 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     };
   }
 
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!
+  );
+
   const { data: proposal, error } = await supabase
     .from('action_proposals')
-    .select('id, draft_subject, draft_body_text, action_type, user_id')
+    .select('id, draft_subject, draft_body_text')
     .eq('id', id)
     .single();
 
@@ -257,8 +255,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       proposal: {
         id: proposal.id,
         draft_subject: proposal.draft_subject,
-        draft_body_text: proposal.draft_body_text,
-        action_type: proposal.action_type
+        draft_body_text: proposal.draft_body_text
       }
     }
   };
