@@ -37,11 +37,17 @@ export async function resolveCp(
   supabase: any,
   userId: string,
   fromHeader: string,
-  emailBody?: string
+  emailBody?: string,
+  userEmail?: string
 ): Promise<string> {
   const senderEmail = getSenderEmail(fromHeader);
   const senderName = getSenderName(fromHeader);
   const phoneNumber = emailBody ? extractPhone(emailBody) : null;
+
+  // GUARD: Never create CP for user's own email
+  if (userEmail && senderEmail === userEmail.toLowerCase()) {
+    throw new Error('CANNOT_CREATE_CP_FOR_USER');
+  }
 
   // Check primary_identifier
   let { data: cp, error: findErr } = await supabase

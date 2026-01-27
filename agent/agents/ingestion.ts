@@ -230,7 +230,7 @@ export async function runIngestion(ctx: AgentContext): Promise<{
       continue;
     }
 
-    const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from, emailData.cleanedText);
+    const cpId = await resolveCp(ctx.supabase, ctx.client.id, emailData.from, emailData.cleanedText, ctx.client.email);
 
     // Check if CP is blacklisted
     const { data: cpData, error: cpError } = await ctx.supabase
