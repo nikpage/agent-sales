@@ -5,7 +5,7 @@ import { withRetry } from '../retryPolicy';
 import { storeMessage } from '../../lib/ingestion';
 import { generateEmbedding, storeEmbedding } from '../../lib/embeddings';
 import { threadEmail } from '../agentSteps/thread';
-import { resolveCp } from '../../lib/cp';
+import { resolveCp, getSenderEmail } from '../../lib/cp';
 import { ingestEmail } from '../agentSteps/ingest';
 import { whitelistPrompt } from '../../lib/ai/prompts/whitelist';
 import { AI_MODELS, AI_CONFIG } from '../../lib/ai/config';
@@ -37,7 +37,8 @@ async function checkWhitelist(ctx: AgentContext, emailData: any): Promise<boolea
  */
 async function checkForCommand(ctx: AgentContext, emailData: any): Promise<boolean> {
   // Only check emails FROM the user (not TO the user)
-  if (emailData.from !== ctx.client.email) {
+  const fromEmail = getSenderEmail(emailData.from);
+  if (fromEmail !== ctx.client.email.toLowerCase()) {
     return false;
   }
 
@@ -194,7 +195,9 @@ export async function runIngestion(ctx: AgentContext): Promise<{
       continue;
     }
 
-    if (emailData.from.includes(ctx.client.email)) {
+    // SKIP USER EMAILS FIRST - before any CP resolution or processing
+    const fromEmail = getSenderEmail(emailData.from);
+    if (fromEmail === ctx.client.email.toLowerCase()) {
       continue;
     }
 

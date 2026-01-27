@@ -1,6 +1,6 @@
 // lib/cp.ts
 
-function getSenderEmail(fromHeader: string): string {
+export function getSenderEmail(fromHeader: string): string {
   const match = fromHeader.match(/<(.+?)>/);
   return (match ? match[1] : fromHeader).trim().toLowerCase();
 }
