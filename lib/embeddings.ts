@@ -2,10 +2,11 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { withRetry } from '../agent/retryPolicy';
+import { AI_MODELS } from './ai/config';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const MODEL = 'text-embedding-004';
-const DIM = 768;
+const MODEL = AI_MODELS.embeddings.model;
+const DIM = AI_MODELS.embeddings.dim;
 const CONCURRENT_UPDATE_MAX_RETRIES = 3;
 
 function normalize(vec: any[]): number[] {

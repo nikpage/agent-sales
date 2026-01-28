@@ -7,7 +7,7 @@ export const AI_MODELS = {
   whitelist: 'gemini-2.5-flash',
   whitelistBulk: 'gemini-2.5-flash-lite', // For initial setup/bulk processing
   embeddings: {
-    model: 'text-embedding-004',
+    model: 'models/gemini-embedding-001',
     dim: 768,
     purpose: 'semantic-search',
     language: 'multilingual',
